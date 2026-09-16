@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>relaysim (móvil)</title>
+<meta name="description" content="Versión para teléfono del simulador de relés y autómatas programables relaysim.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%231a1f1c'/%3E%3Cpath d='M5 12h4M10 8v8M10 12h4M15 8v8M15 12h4' stroke='%2323d97a' stroke-width='1.6' fill='none'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/mobile.css">
+</head>
+<body>
+
+<div class="mtopbar">
+  <span class="mbrand">relaysim</span>
+  <div class="mmeta">
+    <span id="tickLabel">t=0.0s</span>
+    <span id="clockLabel">⏱</span>
+    <span id="runLabel">STOP</span>
+  </div>
+  <button class="mIconBtn" id="btnMenu" aria-expanded="false" aria-controls="drawer">☰</button>
+</div>
+
+<div class="mchips-row">
+  <div class="chips" id="chips"></div>
+</div>
+
+<div class="mcanvas-wrap">
+  <div class="toast" id="toast"></div>
+  <div class="canvas-scroll"><svg id="svg"></svg></div>
+</div>
+
+<div class="mstatus" id="status">Listo</div>
+
+<div class="mbottombar">
+  <button class="btn" id="btnReset">↺</button>
+  <button class="btn" id="btnTick">⏸</button>
+  <button class="btn pri" id="btnParse">▶ Interpretar</button>
+</div>
+
+<div class="mdrawer" id="drawer">
+  <div class="mdrawer-head">
+    <h2 class="eyebrow">Programa</h2>
+    <button class="btn ghost" id="btnCloseDrawer">✕ Cerrar</button>
+  </div>
+  <div class="mdrawer-body">
+    <div class="field">
+      <label class="eyebrow" for="examples">Ejemplo</label>
+      <select id="examples" class="select" style="width:100%">
+        <option value="">Elegir…</option>
+        <option value="lights">Secuencia LB1 → LB2 → LB3</option>
+        <option value="motor">Motor + auto-retención + retardo</option>
+        <option value="xor">Cargas exclusivas SA1/SA2</option>
+        <option value="latch">Arranque / paro simple</option>
+        <option value="seq">Secuencia A/B/C</option>
+      </select>
+      <span class="hint" id="exampleDesc"></span>
+    </div>
+    <textarea id="src" spellcheck="false" placeholder="Pega o escribe aquí tu programa…"></textarea>
+    <details class="mhelp">
+      <summary class="eyebrow">? Sintaxis</summary>
+      <dl class="help-panel" id="helpPanel">
+        <div class="help-item"><dt>INPUT</dt><dd>Dispositivos físicos de entrada.</dd><code>INPUT SB1 SB2 SA3</code></div>
+        <div class="help-item"><dt>Prefijo SB…</dt><dd>Pulsador momentáneo: activo solo mientras lo mantienes pulsado.</dd></div>
+        <div class="help-item"><dt>COIL</dt><dd>Bobina/salida gobernada por contactos.</dd><code>COIL EL1 = SA1 AND !SA2</code></div>
+        <div class="help-item"><dt>LATCH</dt><dd>Biestable con set y reset (auto-retención).</dd><code>LATCH KM1 = SET(SB1) RESET(SB2)</code></div>
+        <div class="help-item"><dt>TIMER</dt><dd>ONDELAY / OFFDELAY / PULSE, en segundos reales.</dd><code>TIMER T1 = ONDELAY(KM1, 3)</code></div>
+        <div class="help-item"><dt>AND OR !</dt><dd>Serie, paralelo, contacto NC.</dd><code>(SA1 OR M1) AND !SA2</code></div>
+      </dl>
+    </details>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+<script>
+  const drawer = document.getElementById('drawer');
+  const btnMenu = document.getElementById('btnMenu');
+  const btnClose = document.getElementById('btnCloseDrawer');
+  function openDrawer() { drawer.classList.add('open'); btnMenu.setAttribute('aria-expanded', 'true'); }
+  function closeDrawer() { drawer.classList.remove('open'); btnMenu.setAttribute('aria-expanded', 'false'); }
+  btnMenu.addEventListener('click', () => drawer.classList.contains('open') ? closeDrawer() : openDrawer());
+  btnClose.addEventListener('click', closeDrawer);
+  // al interpretar o elegir un ejemplo, cierra el cajón para dejar ver el esquema
+  document.getElementById('btnParse').addEventListener('click', () => setTimeout(closeDrawer, 80));
+  document.getElementById('examples').addEventListener('change', () => setTimeout(closeDrawer, 80));
+  // primera visita: el cajón empieza abierto para que se vea el código de ejemplo
+  openDrawer();
+</script>
+</body>
+</html>

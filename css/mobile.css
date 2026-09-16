@@ -1,0 +1,87 @@
+/* mobile.css — layout de mobile.html: pensado para probar con el dedo
+   en un teléfono real, no solo para "encoger" el de escritorio. */
+
+:root { --mtopbar-h: 52px; --mbottombar-h: 60px; }
+
+body {
+  display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  position: relative;
+}
+
+/* ─── Barra superior ─── */
+.mtopbar {
+  height: var(--mtopbar-h); flex-shrink: 0; display: flex; align-items: center;
+  gap: var(--space-2); padding: 0 var(--space-3);
+  background: var(--surface); border-bottom: 1px solid var(--line);
+  z-index: 20;
+}
+.mbrand { font-family: var(--mono); font-weight: 700; font-size: 14px; }
+.mmeta {
+  margin-left: auto; display: flex; gap: 10px; align-items: center;
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted);
+}
+.mIconBtn {
+  width: 36px; height: 36px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong);
+  background: var(--surface); font-size: 16px; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.mIconBtn[aria-expanded="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+/* ─── Fila de entradas (scroll horizontal) ─── */
+.mchips-row {
+  flex-shrink: 0; padding: 10px var(--space-3); background: var(--surface);
+  border-bottom: 1px solid var(--line); overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.mchips-row .chips { flex-wrap: nowrap; }
+.mchips-row .chip { flex-shrink: 0; min-height: 38px; font-size: 13px; padding: 8px 14px; }
+.mchips-empty { font-size: 12px; color: var(--muted); }
+
+/* ─── Lienzo ─── */
+.mcanvas-wrap { flex: 1; position: relative; min-height: 0; background: #fafbfa; }
+.canvas-scroll { width: 100%; height: 100%; overflow: auto; touch-action: pan-x pan-y; -webkit-overflow-scrolling: touch; }
+#svg { display: block; }
+.toast { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 6; display: none; }
+
+/* ─── Barra de estado ─── */
+.mstatus {
+  flex-shrink: 0; padding: 5px var(--space-3); font-family: var(--mono); font-size: 10.5px;
+  color: var(--muted); background: var(--surface); border-top: 1px solid var(--line);
+}
+
+/* ─── Barra inferior fija (thumb-friendly) ─── */
+.mbottombar {
+  flex-shrink: 0; display: flex; gap: 8px; padding: 10px var(--space-3);
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  background: var(--surface); border-top: 1px solid var(--line); z-index: 20;
+}
+.mbottombar .btn { flex: 1; justify-content: center; min-height: 44px; font-size: 13px; }
+.mbottombar .btn.pri { flex: 2; }
+
+/* ─── Cajón de programa ─── */
+.mdrawer {
+  position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+  background: var(--surface); z-index: 15;
+  display: flex; flex-direction: column;
+  transform: translateY(100%); transition: transform .22s ease;
+}
+.mdrawer.open { transform: translateY(0); }
+.mdrawer-head {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-3); border-bottom: 1px solid var(--line);
+}
+.mdrawer-body { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; }
+.mdrawer-body .field { padding: var(--space-3); border-bottom: 1px solid var(--line); }
+.mdrawer-body label { display: block; margin-bottom: 6px; }
+#exampleDesc { display: block; margin-top: 6px; }
+#src {
+  flex: 1; min-height: 220px; width: 100%; border: none; resize: none; padding: var(--space-3);
+  font-family: var(--mono); font-size: 13px; line-height: 1.6;
+  background: transparent; color: var(--ink); outline: none;
+}
+.mhelp { border-top: 1px solid var(--line); }
+.mhelp summary {
+  padding: var(--space-3); cursor: pointer; list-style: none; display: flex;
+  align-items: center; gap: 6px;
+}
+.mhelp summary::-webkit-details-marker { display: none; }
+.mhelp .help-panel { grid-template-columns: 1fr; border-bottom: none; border-top: 1px solid var(--line); }

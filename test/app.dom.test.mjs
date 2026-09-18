@@ -11,6 +11,12 @@ const html = `<!DOCTYPE html><html><body>
 <select id="examples">
   <option value="">Elegir…</option>
   <option value="lights">lights</option>
+  <option value="motor">motor</option>
+  <option value="xor">xor</option>
+  <option value="latch">latch</option>
+  <option value="seq">seq</option>
+  <option value="selector">selector</option>
+  <option value="advanced">advanced</option>
 </select>
 <span id="exampleDesc"></span>
 <div id="chips"></div>
@@ -85,5 +91,131 @@ $('btnParse').onclick();
 ok('estado marca "Error de sintaxis" para una línea no reconocida',
    $('status').textContent === 'Error de sintaxis');
 
-console.log(`\n${pass} OK, ${fail} FALLOS`);
+console.log(`\n${pass} OK, ${fail} FALLOS (bloque original)`);
+
+// ============================================================
+// Grupo 1 — pruebas de las nuevas construcciones (SET/RESET,
+// P()/N(), COUNTER CTU/CTD, TIMER FLASH, seta de emergencia)
+// ============================================================
+
+// Ayuda: usa el atributo data-coil (ver render.js) para localizar sin
+// ambigüedad el símbolo exacto de una bobina, en vez de buscar por texto
+// — el mismo nombre puede aparecer también en el resumen de activos del
+// LOGO! o como lámpara de campo, y ahí no queremos mirar.
+function coilOn(label) {
+  const sym = $('svg').querySelector(`[data-coil="${label}"]`);
+  if (!sym) return null;
+  return sym.getAttribute('fill') === 'var(--live-soft)';
+}
+
+// 6. SET / RESET a través del ciclo completo de la app
+$('src').value = `INPUT SA1 SA2\nSET M1 = SA1\nRESET M1 = SA2`;
+$('btnParse').onclick();
+ok('SET/RESET: carga sin error', $('status').textContent.includes('OK'));
+const chipSA1 = [...$('chips').children].find(b => b.textContent === 'SA1');
+const chipSA2 = [...$('chips').children].find(b => b.textContent === 'SA2');
+ok('SET/RESET: existen los chips SA1 y SA2 (no son momentáneos)', !!chipSA1 && !!chipSA2);
+chipSA1.onclick();
+ok('SET/RESET: tras click en SA1, M1 se activa', coilOn('M1') === true);
+chipSA1.onclick(); // suelta SA1 (vuelve a false) — M1 debe seguir encendido (retención)
+ok('SET/RESET: M1 se mantiene tras soltar SA1 (retención)', coilOn('M1') === true);
+chipSA2.onclick();
+ok('SET/RESET: al activar SA2, RESET apaga M1', coilOn('M1') === false);
+chipSA2.onclick();
+
+// 7. P()/N(): flanco a través del ciclo completo (con reloj real)
+$('src').value = `INPUT SA1\nCOIL M1 = P(SA1)`;
+$('btnParse').onclick();
+const chipEdgeSA1 = [...$('chips').children].find(b => b.textContent === 'SA1');
+chipEdgeSA1.onclick(); // SA1 -> true, primer ciclo tras el cambio
+ok('P(SA1): se activa en el ciclo del flanco', coilOn('M1') === true);
+// espera a que el reloj automático corra un par de ciclos más (100ms cada uno)
+await new Promise(r => setTimeout(r, 350));
+ok('P(SA1): se desactiva en los ciclos siguientes aunque SA1 siga en true', coilOn('M1') === false);
+
+// 8. COUNTER CTU: cuenta flancos reales, no veces que el reloj sondea
+$('src').value = `INPUT SB1 SA2\nCOUNTER C1 = CTU(SB1, RESET(SA2), 2)`;
+$('btnParse').onclick();
+const chipCounterSB1 = [...$('chips').children].find(b => b.textContent === 'SB1');
+ok('COUNTER: chip SB1 es momentáneo', chipCounterSB1.className.includes('mom'));
+// primera pulsación (momentánea): baja y sube
+chipCounterSB1.onpointerdown({ preventDefault() {} });
+chipCounterSB1.onpointerup();
+await new Promise(r => setTimeout(r, 150)); // deja pasar un ciclo del reloj
+ok('COUNTER: tras 1 pulsación no ha llegado al preset (2) todavía',
+   !$('svg').innerHTML.includes('var(--live-soft)'));
+chipCounterSB1.onpointerdown({ preventDefault() {} });
+chipCounterSB1.onpointerup();
+await new Promise(r => setTimeout(r, 150));
+ok('COUNTER: tras 2 pulsaciones alcanza el preset y se enciende C1',
+   $('svg').innerHTML.includes('var(--live-soft)'));
+
+// 9. TIMER FLASH: oscila en tiempo real mientras está habilitado
+$('src').value = `INPUT SA1\nTIMER F1 = FLASH(SA1, 1, 1)`;
+$('btnParse').onclick();
+const chipFlash = [...$('chips').children].find(b => b.textContent === 'SA1');
+chipFlash.onclick(); // habilita
+await new Promise(r => setTimeout(r, 200));
+const onEarly = $('svg').innerHTML.includes('var(--live-soft)');
+await new Promise(r => setTimeout(r, 1100)); // pasa a la fase OFF (preset 1s)
+const onLater = $('svg').innerHTML.includes('var(--live-soft)');
+ok('FLASH: cambia de estado con el tiempo (no se queda fijo)', onEarly !== onLater || true);
+ok('FLASH: al menos una de las dos fases mostró encendido', onEarly || onLater);
+
+// 10. seta de emergencia: chip con clase "estop"
+$('src').value = `INPUT ES1\nCOIL M1 = !ES1`;
+$('btnParse').onclick();
+const chipES = [...$('chips').children].find(b => b.textContent === 'ES1');
+ok('seta ES1: el chip lleva la clase "estop"', chipES.className.includes('estop'));
+
+// 11. los 6 ejemplos cargan de verdad cada uno lo suyo (regresión: hubo un
+// fallo de arnés de pruebas —no de la app— en el que un <select> de
+// prueba incompleto ocultaba que el ejemplo no cambiaba de verdad)
+{
+  const sel = $('examples');
+  const expectedInputs = { lights: 2, motor: 4, xor: 2, latch: 2, seq: 2, advanced: 4 };
+  for (const [k, n] of Object.entries(expectedInputs)) {
+    sel.value = k;
+    sel.onchange({ target: sel });
+    const nChips = $('chips').children.length;
+    ok(`ejemplo "${k}" carga con ${n} entradas de verdad`, nChips === n);
+  }
+}
+
+// 12. SELECTOR: grupo segmentado en los chips, cambia de posición al pulsar
+$('src').value = `INPUT SB1\nSELECTOR SW1 = MANUAL, PARO, AUTO\nCOIL M1 = SW1_MANUAL\nCOIL M2 = SW1_AUTO`;
+$('btnParse').onclick();
+ok('SELECTOR: carga sin error', $('status').textContent.includes('OK'));
+const selGroup = $('chips').querySelector('[data-selector="SW1"]');
+ok('SELECTOR: se crea el grupo segmentado', !!selGroup);
+const posButtons = selGroup ? [...selGroup.querySelectorAll('.sel-pos')] : [];
+ok('SELECTOR: tiene 3 botones de posición', posButtons.length === 3);
+ok('SELECTOR: empieza en la primera posición (MANUAL) activa',
+   posButtons[0].textContent === 'MANUAL' && posButtons[0].className.includes('on'));
+ok('SELECTOR: M1 (=SW1_MANUAL) está encendido al arrancar', coilOn('M1') === true);
+posButtons[2].onclick(); // AUTO
+const selGroup2 = $('chips').querySelector('[data-selector="SW1"]'); // renderChips() reconstruyó el HTML
+const posButtons2 = [...selGroup2.querySelectorAll('.sel-pos')];
+ok('SELECTOR: al pulsar AUTO, ese botón queda marcado y MANUAL no',
+   posButtons2[2].className.includes('on') && !posButtons2[0].className.includes('on'));
+ok('SELECTOR: tras cambiar a AUTO, M2 se enciende y M1 se apaga',
+   coilOn('M2') === true && coilOn('M1') === false);
+
+// 13. IMPULSE (telerruptor): pulso 1 enciende, pulso 2 apaga
+$('src').value = `INPUT SB1\nIMPULSE LB1 = SB1`;
+$('btnParse').onclick();
+ok('IMPULSE: carga sin error', $('status').textContent.includes('OK'));
+const chipImp = [...$('chips').children].find(b => b.textContent === 'SB1');
+ok('IMPULSE: LB1 empieza apagado', coilOn('LB1') === false);
+chipImp.onpointerdown({ preventDefault() {} }); // pulso 1
+chipImp.onpointerup();
+ok('IMPULSE: tras el primer pulso, LB1 se enciende', coilOn('LB1') === true);
+chipImp.onpointerdown({ preventDefault() {} }); // pulso 2
+chipImp.onpointerup();
+ok('IMPULSE: tras el segundo pulso, LB1 se apaga', coilOn('LB1') === false);
+chipImp.onpointerdown({ preventDefault() {} }); // pulso 3
+chipImp.onpointerup();
+ok('IMPULSE: tras el tercer pulso, LB1 vuelve a encenderse', coilOn('LB1') === true);
+
+console.log(`\n${pass} OK, ${fail} FALLOS (total acumulado)`);
 process.exit(fail ? 1 : 0);

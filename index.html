@@ -37,6 +37,9 @@
       <option value="xor">Cargas exclusivas SA1/SA2</option>
       <option value="latch">Arranque / paro simple</option>
       <option value="seq">Secuencia A/B/C</option>
+      <option value="selector">Selector Manual/Paro/Automático</option>
+      <option value="protections">Telerruptor + símbolos de protección</option>
+      <option value="advanced">SET/RESET + flanco + contador + intermitente</option>
     </select>
   </div>
   <button class="btn ghost" id="btnHelp" aria-expanded="false" aria-controls="helpPanel">? Sintaxis</button>
@@ -57,6 +60,17 @@
 TIMER T2 = OFFDELAY(KM1, 3)
 TIMER T3 = PULSE(SB1, 2)</code></div>
   <div class="help-item"><dt>AND / OR / !</dt><dd>Serie, paralelo y contacto NC. Los paréntesis agrupan.</dd><code>(SA1 OR M1) AND !SA2</code></div>
+  <div class="help-item"><dt>SET / RESET</dt><dd>Bobinas de asignación, pueden repetirse por nombre. Si dos líneas del mismo nombre coinciden en un ciclo, manda la que está más abajo en el programa (orden de escaneo, como un PLC real).</dd><code>SET KM1 = SB1
+RESET KM1 = SB2</code></div>
+  <div class="help-item"><dt>P(...) / N(...)</dt><dd>Contacto de flanco: solo conduce un ciclo, justo cuando la señal pasa de 0→1 (P) o de 1→0 (N).</dd><code>COIL PULSO = P(SB1)</code></div>
+  <div class="help-item"><dt>COUNTER</dt><dd>Contador ascendente/descendente. Cuenta flancos de subida de la entrada, no "tiempo pulsado".</dd><code>COUNTER C1 = CTU(SB1, RESET(SA1), 3)
+COUNTER C2 = CTD(SB1, RESET(SA1), 3)</code></div>
+  <div class="help-item"><dt>TIMER ... FLASH</dt><dd>Relé intermitente: mientras la entrada esté activa, alterna encendido/apagado con sus propios segundos.</dd><code>TIMER LB1 = FLASH(KM1, 1, 1)</code></div>
+  <div class="help-item"><dt>Prefijo ES…</dt><dd>Cualquier entrada que empiece por "ES" se trata y se dibuja como una seta de emergencia (selector fijo, no momentáneo).</dd></div>
+  <div class="help-item"><dt>SELECTOR</dt><dd>Selector de 2 a 4 posiciones. Crea las señales NOMBRE_POSICION (exactamente una activa a la vez); el nombre base no es una señal por sí solo.</dd><code>SELECTOR SW1 = MANUAL, PARO, AUTO
+COIL M1 = SW1_MANUAL</code></div>
+  <div class="help-item"><dt>IMPULSE</dt><dd>Telerruptor: cada flanco de subida de la entrada conmuta el estado (pulso 1 enciende, pulso 2 apaga...), a diferencia de SET/RESET.</dd><code>IMPULSE LB1 = SB1</code></div>
+  <div class="help-item"><dt>Prefijos de dispositivo</dt><dd>Cambian solo el icono en el esquema de campo, no la simulación: FT=térmico, QM=magnetotérmico, FU=fusible, QS=seccionador, DIF/RCD=diferencial.</dd></div>
   <div class="help-item"><dt># comentario</dt><dd>Cualquier línea que empiece por "#" se ignora.</dd></div>
 </dl>
 

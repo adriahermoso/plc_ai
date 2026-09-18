@@ -53,6 +53,9 @@
         <option value="xor">Cargas exclusivas SA1/SA2</option>
         <option value="latch">Arranque / paro simple</option>
         <option value="seq">Secuencia A/B/C</option>
+        <option value="selector">Selector Manual/Paro/Automático</option>
+        <option value="protections">Telerruptor + símbolos de protección</option>
+      <option value="advanced">SET/RESET + flanco + contador + intermitente</option>
       </select>
       <span class="hint" id="exampleDesc"></span>
     </div>
@@ -66,6 +69,15 @@
         <div class="help-item"><dt>LATCH</dt><dd>Biestable con set y reset (auto-retención).</dd><code>LATCH KM1 = SET(SB1) RESET(SB2)</code></div>
         <div class="help-item"><dt>TIMER</dt><dd>ONDELAY / OFFDELAY / PULSE, en segundos reales.</dd><code>TIMER T1 = ONDELAY(KM1, 3)</code></div>
         <div class="help-item"><dt>AND OR !</dt><dd>Serie, paralelo, contacto NC.</dd><code>(SA1 OR M1) AND !SA2</code></div>
+        <div class="help-item"><dt>SET / RESET</dt><dd>Bobinas de asignación; pueden repetirse por nombre. Con ambas a la vez, manda la que va más abajo en el programa.</dd><code>SET KM1 = SB1
+RESET KM1 = SB2</code></div>
+        <div class="help-item"><dt>P(...) / N(...)</dt><dd>Contacto de flanco: un solo ciclo al pasar de 0→1 (P) o 1→0 (N).</dd><code>COIL PULSO = P(SB1)</code></div>
+        <div class="help-item"><dt>COUNTER</dt><dd>CTU (ascendente) / CTD (descendente), cuenta flancos.</dd><code>COUNTER C1 = CTU(SB1, RESET(SA1), 3)</code></div>
+        <div class="help-item"><dt>TIMER FLASH</dt><dd>Relé intermitente con segundos ON/OFF propios.</dd><code>TIMER LB1 = FLASH(KM1, 1, 1)</code></div>
+        <div class="help-item"><dt>Prefijo ES…</dt><dd>Entrada que se dibuja como seta de emergencia.</dd></div>
+        <div class="help-item"><dt>SELECTOR</dt><dd>2 a 4 posiciones; crea NOMBRE_POSICION, solo una activa.</dd><code>SELECTOR SW1 = MANUAL, PARO, AUTO</code></div>
+        <div class="help-item"><dt>IMPULSE</dt><dd>Telerruptor: cada flanco conmuta el estado.</dd><code>IMPULSE LB1 = SB1</code></div>
+        <div class="help-item"><dt>Prefijos FT/QM/FU/QS/DIF</dt><dd>Iconos de térmico/magnetotérmico/fusible/seccionador/diferencial (solo visual).</dd></div>
       </dl>
     </details>
   </div>

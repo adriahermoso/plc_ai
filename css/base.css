@@ -72,6 +72,22 @@ select.select {
 }
 .chip.on { background: var(--live-soft); border-color: var(--live); color: var(--live); font-weight: 600; }
 .chip.mom { border-style: dashed; }
+.chip.estop { border-color: var(--phase); color: var(--phase); font-weight: 700; }
+.chip.estop.on { background: #fdecea; border-color: var(--phase); color: var(--phase); }
+
+.selector-group {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid var(--line-strong); border-radius: 999px; padding: 3px 4px 3px 10px;
+}
+.selector-label {
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-right: 2px;
+}
+.selector-group .chip.sel-pos {
+  border-radius: 999px; padding: 5px 10px; border-color: transparent; background: transparent;
+}
+.selector-group .chip.sel-pos.on {
+  background: var(--ink); border-color: var(--ink); color: #fff; font-weight: 700;
+}
 
 .hint { font-size: 11px; color: var(--muted); line-height: 1.45; }
 

@@ -4,7 +4,7 @@
 // (btnParse, btnReset, btnTick, examples, chips, src, svg, toast, status,
 // tickLabel, clockLabel, runLabel), así que esta lógica no se duplica.
 
-import { parseProgram, evalAst, settle, isMom, blankState } from './core.js';
+import { parseProgram, evalAst, settle, commitEdgeMemory, isMom, isEStop, blankState, setSelectorPosition } from './core.js';
 import { drawAll } from './render.js';
 import { EXAMPLES } from './examples.js';
 
@@ -12,10 +12,14 @@ const POLL_MS = 100; // resolución del reloj/UI
 
 let program = null;
 let states = {};
-let tCnt = {};    // contador visible (segundos hacia el preset)
+let tCnt = {};    // contador visible (segundos hacia el preset, o fase actual en FLASH)
 let tEdge = {};   // muestra anterior de la entrada del timer
 let tArmed = {};  // armado para OFFDELAY/PULSE
 let tStart = {};  // performance.now() al iniciar la fase de temporizado
+let tPhase = {};  // 'on'/'off' — fase actual de un TIMER FLASH
+let cCnt = {};    // valor actual de cada COUNTER
+let cEdge = {};   // muestra anterior del disparo del contador (para detectar el flanco)
+let iEdge = {};   // muestra anterior del disparo de cada IMPULSE (telerruptor)
 let tick = 0;
 let clockOn = true;
 let clockTimer = null;
@@ -84,13 +88,20 @@ function toggleClock() {
 }
 
 function resetTimerMem(prog) {
-  tCnt = {}; tEdge = {}; tArmed = {}; tStart = {};
+  tCnt = {}; tEdge = {}; tArmed = {}; tStart = {}; tPhase = {};
+  cCnt = {}; cEdge = {}; iEdge = {};
   prog.timers.forEach(t => {
     tCnt[t.name] = 0;
     tEdge[t.name] = false;
     tArmed[t.name] = false;
     tStart[t.name] = null;
+    tPhase[t.name] = 'off';
   });
+  prog.counters.forEach(c => {
+    cCnt[c.name] = c.kind === 'ctd' ? c.preset : 0;
+    cEdge[c.name] = false;
+  });
+  prog.impulses.forEach(imp => { iEdge[imp.name] = false; });
 }
 
 /**
@@ -124,13 +135,29 @@ function updateTimersRealtime() {
         tCnt[t.name] = Math.min(t.preset, Math.floor(sec + 1e-9));
         if (sec >= t.preset) tArmed[t.name] = false;
       } else { tStart[t.name] = null; tCnt[t.name] = 0; }
-    } else {
+    } else if (t.kind === 'pulse') {
       if (raw && !prev) { tStart[t.name] = now; tArmed[t.name] = true; tCnt[t.name] = 0; }
       if (tArmed[t.name] && tStart[t.name] != null) {
         const sec = (now - tStart[t.name]) / 1000;
         tCnt[t.name] = Math.min(t.preset, Math.floor(sec + 1e-9));
         if (sec >= t.preset) tArmed[t.name] = false;
       } else if (!tArmed[t.name]) { tCnt[t.name] = 0; }
+    } else if (t.kind === 'flash') {
+      // relé intermitente: mientras `raw` (enable) esté activo, alterna
+      // fase ON/OFF con sus propios segundos; tCnt lleva el contador de
+      // la fase actual (para mostrarlo en el diagrama).
+      if (!raw) { tStart[t.name] = null; tPhase[t.name] = 'off'; tCnt[t.name] = 0; }
+      else {
+        if (tStart[t.name] == null) { tStart[t.name] = now; tPhase[t.name] = 'on'; }
+        const curPreset = tPhase[t.name] === 'on' ? t.presetOn : t.presetOff;
+        const sec = (now - tStart[t.name]) / 1000;
+        tCnt[t.name] = Math.min(curPreset, Math.floor(sec + 1e-9));
+        if (sec >= curPreset) {
+          tPhase[t.name] = tPhase[t.name] === 'on' ? 'off' : 'on';
+          tStart[t.name] = now;
+          tCnt[t.name] = 0;
+        }
+      }
     }
     tEdge[t.name] = raw;
   });
@@ -142,15 +169,62 @@ function updateTimersRealtime() {
       if (raw) states[t.name] = true;
       else if (tArmed[t.name] && tStart[t.name] != null) states[t.name] = (now - tStart[t.name]) / 1000 < t.preset;
       else states[t.name] = false;
-    } else {
+    } else if (t.kind === 'pulse') {
       states[t.name] = !!(tArmed[t.name] && tStart[t.name] != null && (now - tStart[t.name]) / 1000 < t.preset);
+    } else if (t.kind === 'flash') {
+      states[t.name] = raw && tPhase[t.name] === 'on';
     }
+  });
+}
+
+/**
+ * Contadores CTU/CTD en tiempo real: incrementan/decrementan en cada
+ * flanco de subida de su entrada de disparo (no en cada sondeo de 100ms,
+ * para que pulsar dos veces cuente dos, no un número indefinido de veces).
+ */
+function updateCountersRealtime() {
+  if (!program) return;
+  const samples = program.counters.map(c => ({
+    c, raw: !!evalAst(c.triggerAst, states), resetNow: !!evalAst(c.resetAst, states), prev: !!cEdge[c.name],
+  }));
+  samples.forEach(({ c, raw, resetNow, prev }) => {
+    const rising = raw && !prev;
+    if (resetNow) {
+      cCnt[c.name] = c.kind === 'ctd' ? c.preset : 0;
+    } else if (rising) {
+      if (c.kind === 'ctu') cCnt[c.name] = Math.min(c.preset, cCnt[c.name] + 1);
+      else cCnt[c.name] = Math.max(0, cCnt[c.name] - 1);
+    }
+    cEdge[c.name] = raw;
+  });
+  samples.forEach(({ c }) => {
+    states[c.name] = c.kind === 'ctd' ? cCnt[c.name] <= 0 : cCnt[c.name] >= c.preset;
+  });
+}
+
+/**
+ * Telerruptor (IMPULSE): cada flanco de subida de su entrada conmuta el
+ * estado — el primer pulso enciende, el segundo apaga, y así alternando.
+ * Se resuelve una vez por ciclo, fuera del punto fijo de settle() (igual
+ * que los contadores), porque conmutar dentro del propio punto fijo
+ * oscilaría sin converger nunca.
+ */
+function updateImpulsesRealtime() {
+  if (!program) return;
+  program.impulses.forEach(imp => {
+    const raw = !!evalAst(imp.ast, states);
+    const prev = !!iEdge[imp.name];
+    if (raw && !prev) states[imp.name] = !states[imp.name];
+    iEdge[imp.name] = raw;
   });
 }
 
 function runCycle() {
   updateTimersRealtime();
+  updateCountersRealtime();
+  updateImpulsesRealtime();
   if (!settle(program, states)) throw new Error('No converge (oscilación / realimentación)');
+  commitEdgeMemory(program, states); // guarda "valor de este ciclo" para P()/N() la próxima vez
 }
 
 /* ─── UI helpers ─── */
@@ -166,7 +240,7 @@ function setRun(on) {
   el.runLabel.style.color = on ? 'var(--live)' : 'var(--muted)';
 }
 function redraw() {
-  drawAll(el.svg, program, states, tCnt, {
+  drawAll(el.svg, program, states, { ...tCnt, ...cCnt }, {
     onToggleInput: name => setInput(name, !states[name]),
     onPressStart: name => setInput(name, true),
     onPressEnd: name => { if (states[name]) setInput(name, false); },
@@ -194,7 +268,9 @@ function loadProgram(text) {
   el.tickLabel.textContent = 't = 0.0 s';
   renderChips();
   redraw();
-  setStatus(`OK · ${program.inputs.length} entradas · ${program.coils.length + program.latches.length + program.timers.length} bloques · TIMER en segundos reales`);
+  const nSR = new Set(program.setResets.map(op => op.name)).size;
+  const nBlocks = program.coils.length + program.latches.length + nSR + program.timers.length + program.counters.length + program.impulses.length;
+  setStatus(`OK · ${program.inputs.length} entradas · ${nBlocks} bloques · TIMER/COUNTER en tiempo real`);
   startClock();
 }
 
@@ -211,13 +287,26 @@ function setInput(name, val) {
   }
 }
 
+function setSelector(selName, index) {
+  setSelectorPosition(program, states, selName, index);
+  try {
+    hideToast();
+    runCycle();
+    renderChips();
+    redraw();
+    setStatus(`${selName} → posición ${index + 1}`);
+  } catch (e) {
+    showToast(e.message, false);
+  }
+}
+
 /* ─── Chips de entradas físicas ─── */
 function renderChips() {
   el.chips.innerHTML = '';
   if (!program) return;
   program.inputs.forEach(name => {
     const b = document.createElement('button');
-    b.className = 'chip' + (states[name] ? ' on' : '') + (isMom(name) ? ' mom' : '');
+    b.className = 'chip' + (states[name] ? ' on' : '') + (isMom(name) ? ' mom' : '') + (isEStop(name) ? ' estop' : '');
     b.textContent = name;
     if (isMom(name)) {
       b.onpointerdown = e => { e.preventDefault(); setInput(name, true); };
@@ -227,6 +316,24 @@ function renderChips() {
       b.onclick = () => setInput(name, !states[name]);
     }
     el.chips.appendChild(b);
+  });
+  (program.selectors || []).forEach(sel => {
+    const group = document.createElement('div');
+    group.className = 'selector-group';
+    group.setAttribute('data-selector', sel.name);
+    const label = document.createElement('span');
+    label.className = 'selector-label';
+    label.textContent = sel.name;
+    group.appendChild(label);
+    sel.positions.forEach((pos, i) => {
+      const on = !!states[sel.name + '_' + pos];
+      const b = document.createElement('button');
+      b.className = 'chip sel-pos' + (on ? ' on' : '');
+      b.textContent = pos;
+      b.onclick = () => setSelector(sel.name, i);
+      group.appendChild(b);
+    });
+    el.chips.appendChild(group);
   });
 }
 

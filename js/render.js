@@ -4,17 +4,23 @@
 // globales del script; ahora se le pasan explícitamente) para poder vivir
 // en su propio módulo sin depender de app.js.
 
-import { evalAst, isMom } from './core.js';
+import { evalAst, isMom, isEStop, isThermal, isBreaker, isFuse, isDisconnect, isRCD } from './core.js';
 
 const CW = 54, CH = 38, GAPX = 12, GAPY = 8;
 
 export function layout(node) {
-  if (node.type === 'contact' || node.type === 'not') {
-    if (node.type === 'not' && node.child.type !== 'contact') {
+  if (node.type === 'contact') return { w: CW, h: CH, node };
+  if (node.type === 'not') {
+    if (node.child.type !== 'contact') {
       const c = layout(node.child);
       return { w: c.w + 16, h: c.h, node, children: [c] };
     }
     return { w: CW, h: CH, node };
+  }
+  if (node.type === 'pedge' || node.type === 'nedge') {
+    if (node.child.type === 'contact') return { w: CW, h: CH, node };
+    const c = layout(node.child);
+    return { w: c.w, h: c.h, node, children: [c] };
   }
   const kids = node.children.map(layout);
   if (node.type === 'and') {
@@ -35,7 +41,19 @@ function wire(x1, y1, x2, y2, on) {
   return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${on ? 'var(--live)' : 'var(--ink)'}" stroke-width="${on ? 2.3 : 1.35}"/>`;
 }
 
-function drawContact(x, midY, ref, no, closed, parts) {
+// Numeración de bornes por convención IEC 60947-5-1: cada bloque de
+// contactos de un mismo dispositivo se numera 13/14, 23/24, 33/34, 43/44
+// (NA) o 11/12, 21/22, 31/32, 41/42 (NC) — el dígito de las decenas es el
+// número de polo/bloque. poleMap lleva la cuenta de cuántas veces se ha
+// dibujado cada referencia en todo el esquema (una Map compartida por
+// todo el drawAll(), reiniciada en cada redibujado).
+function nextPole(ref, poleMap) {
+  const idx = poleMap.get(ref) || 0;
+  poleMap.set(ref, idx + 1);
+  return (idx % 4) + 1; // los bloques reales de un contactor no pasan de 4
+}
+
+function drawContact(x, midY, ref, no, closed, parts, poleMap) {
   const col = closed ? 'var(--live)' : 'var(--ink)';
   const cx = x + CW / 2, L = cx - 6, R = cx + 6;
   parts.push(wire(x, midY, L, midY, closed));
@@ -46,31 +64,61 @@ function drawContact(x, midY, ref, no, closed, parts) {
     parts.push(`<line x1="${L - 2}" y1="${midY + 9}" x2="${R + 2}" y2="${midY - 9}" stroke="${col}" stroke-width="1.7"/>`);
   }
   parts.push(`<text x="${cx}" y="${midY - 14}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">${ref}</text>`);
+  const pole = nextPole(ref, poleMap);
+  parts.push(`<text x="${L}" y="${midY + 20}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">${pole}${no ? '3' : '1'}</text>`);
+  parts.push(`<text x="${R}" y="${midY + 20}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">${pole}${no ? '4' : '2'}</text>`);
 }
 
-function drawExpr(lay, x, y, st, parts) {
+// Contacto de flanco P()/N(): mismos trazos que un contacto normal, pero
+// con la letra P/N en vez de la diagonal NC, y sin numeración de bornes
+// (no representa un borne físico real, es un bloque de programa).
+function drawEdgeContact(x, midY, ref, label, closed, parts) {
+  const col = closed ? 'var(--live)' : 'var(--ink)';
+  const cx = x + CW / 2, L = cx - 6, R = cx + 6;
+  parts.push(wire(x, midY, L, midY, closed));
+  parts.push(wire(R, midY, x + CW, midY, closed));
+  parts.push(`<line x1="${L}" y1="${midY - 8}" x2="${L}" y2="${midY + 8}" stroke="${col}" stroke-width="2.2"/>`);
+  parts.push(`<line x1="${R}" y1="${midY - 8}" x2="${R}" y2="${midY + 8}" stroke="${col}" stroke-width="2.2"/>`);
+  parts.push(`<text x="${cx}" y="${midY + 3}" text-anchor="middle" font-family="var(--mono)" font-size="8" font-weight="700" fill="${col}">${label}</text>`);
+  parts.push(`<text x="${cx}" y="${midY - 14}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">${ref}</text>`);
+}
+
+function drawExpr(lay, x, y, st, parts, poleMap) {
   const midY = y + lay.h / 2;
   const n = lay.node;
   if (n.type === 'contact') {
     const closed = n.no ? !!st[n.ref] : !st[n.ref];
-    drawContact(x, midY, n.ref, n.no, closed, parts);
+    drawContact(x, midY, n.ref, n.no, closed, parts, poleMap);
     return;
   }
   if (n.type === 'not' && n.child.type === 'contact') {
     const ref = n.child.ref;
     const closed = !st[ref];
-    drawContact(x, midY, ref, false, closed, parts);
+    drawContact(x, midY, ref, false, closed, parts, poleMap);
     return;
   }
   if (n.type === 'not') {
     const cl = lay.children[0];
-    drawExpr(cl, x + 8, y + (lay.h - cl.h) / 2, st, parts);
+    drawExpr(cl, x + 8, y + (lay.h - cl.h) / 2, st, parts, poleMap);
+    return;
+  }
+  if (n.type === 'pedge' || n.type === 'nedge') {
+    const label = n.type === 'pedge' ? 'P' : 'N';
+    if (n.child.type === 'contact') {
+      drawEdgeContact(x, midY, n.child.ref, label, evalAst(n, st), parts);
+      return;
+    }
+    // caso compuesto (poco habitual): dibuja la red normal y añade la
+    // etiqueta P/N flotando encima, ya que el flanco no tiene un único borne
+    const cl = lay.children[0];
+    drawExpr(cl, x, y, st, parts, poleMap);
+    parts.push(`<text x="${x + 4}" y="${y - 2}" font-family="var(--mono)" font-size="9" font-weight="700" fill="var(--warn)">${label}</text>`);
     return;
   }
   if (n.type === 'and') {
     let cx = x;
     lay.children.forEach((cl, i) => {
-      drawExpr(cl, cx, y + (lay.h - cl.h) / 2, st, parts);
+      drawExpr(cl, cx, y + (lay.h - cl.h) / 2, st, parts, poleMap);
       if (i < lay.children.length - 1) {
         const on = n.children.slice(0, i + 1).every(c => evalAst(c, st));
         parts.push(wire(cx + cl.w, midY, cx + cl.w + GAPX, midY, on));
@@ -85,7 +133,7 @@ function drawExpr(lay, x, y, st, parts) {
   const ys = [];
   lay.children.forEach(cl => {
     ys.push(cy + cl.h / 2);
-    drawExpr(cl, x + stub, cy, st, parts);
+    drawExpr(cl, x + stub, cy, st, parts, poleMap);
     cy += cl.h + GAPY;
   });
   const top = ys[0], bot = ys[ys.length - 1];
@@ -99,6 +147,32 @@ function drawExpr(lay, x, y, st, parts) {
     const on = evalAst(n.children[i], st);
     parts.push(wire(x + stub + cl.w, ys[i], rx, ys[i], on));
   });
+}
+
+// Iconos distintivos para los dispositivos de protección/maniobra
+// reconocidos por convención de nombre (ver isThermal/isBreaker/... en
+// core.js). Son simplificaciones geométricas, no símbolos IEC exactos,
+// pensadas para distinguirse de un vistazo sin sobrecargar el esquema.
+function drawDeviceGlyph(kind, cx, yy, parts) {
+  const col = 'var(--warn)';
+  const gy = yy - 20;
+  if (kind === 'thermal') {
+    parts.push(`<rect x="${cx - 9}" y="${gy - 6}" width="18" height="12" rx="1.5" fill="none" stroke="${col}" stroke-width="1.6"/>`);
+    parts.push(`<polyline points="${cx - 6},${gy} ${cx - 3},${gy - 4} ${cx},${gy} ${cx + 3},${gy - 4} ${cx + 6},${gy}" fill="none" stroke="${col}" stroke-width="1.3"/>`);
+  } else if (kind === 'breaker') {
+    parts.push(`<circle cx="${cx}" cy="${gy + 5}" r="1.8" fill="${col}"/>`);
+    parts.push(`<line x1="${cx}" y1="${gy + 5}" x2="${cx + 8}" y2="${gy - 6}" stroke="${col}" stroke-width="2"/>`);
+  } else if (kind === 'fuse') {
+    parts.push(`<rect x="${cx - 4}" y="${gy - 7}" width="8" height="14" rx="4" fill="none" stroke="${col}" stroke-width="1.6"/>`);
+    parts.push(`<line x1="${cx}" y1="${gy - 9}" x2="${cx}" y2="${gy + 9}" stroke="${col}" stroke-width="1.2"/>`);
+  } else if (kind === 'disconnect') {
+    parts.push(`<line x1="${cx - 6}" y1="${gy + 5}" x2="${cx + 6}" y2="${gy - 6}" stroke="${col}" stroke-width="2.2"/>`);
+    parts.push(`<circle cx="${cx - 6}" cy="${gy + 5}" r="1.6" fill="${col}"/>`);
+    parts.push(`<circle cx="${cx + 6}" cy="${gy - 6}" r="1.6" fill="${col}"/>`);
+  } else if (kind === 'rcd') {
+    parts.push(`<circle cx="${cx}" cy="${gy}" r="7" fill="none" stroke="${col}" stroke-width="1.6"/>`);
+    parts.push(`<text x="${cx}" y="${gy + 3}" text-anchor="middle" font-family="var(--mono)" font-size="8" font-weight="700" fill="${col}">Δ</text>`);
+  }
 }
 
 function drawField(prog, st) {
@@ -118,7 +192,10 @@ function drawField(prog, st) {
   const active = [
     ...prog.latches.map(l => l.name),
     ...prog.coils.map(c => c.name),
+    ...new Set(prog.setResets.map(op => op.name)),
     ...prog.timers.map(t => t.name),
+    ...prog.counters.map(c => c.name),
+    ...prog.impulses.map(imp => imp.name),
   ].filter(n => st[n]);
   parts.push(`<text x="${logoX + logoW / 2}" y="${logoY + 52}" text-anchor="middle" fill="#8fdbb0" font-family="var(--mono)" font-size="11">${active.length ? active.slice(0, 4).join(' ') : 'IDLE'}</text>`);
 
@@ -134,7 +211,10 @@ function drawField(prog, st) {
   const outs = [
     ...prog.latches.map(l => l.name),
     ...prog.coils.map(c => c.name),
+    ...new Set(prog.setResets.map(op => op.name)),
     ...prog.timers.map(t => t.name),
+    ...prog.counters.map(c => c.name),
+    ...prog.impulses.map(imp => imp.name),
   ].slice(0, 4);
   parts.push(`<text x="${logoX + 14}" y="${logoY + 160}" fill="#9aa7b2" font-family="var(--mono)" font-size="8">SALIDAS</text>`);
   outs.forEach((name, i) => {
@@ -152,14 +232,24 @@ function drawField(prog, st) {
   inputs.forEach((name, i) => {
     const yy = 78 + i * 34;
     const on = !!st[name];
-    const col = on ? 'var(--live)' : 'var(--ink)';
+    const es = isEStop(name);
+    const kind = isThermal(name) ? 'thermal' : isBreaker(name) ? 'breaker' : isFuse(name) ? 'fuse'
+      : isDisconnect(name) ? 'disconnect' : isRCD(name) ? 'rcd' : null;
+    const hasIcon = es || !!kind;
+    const col = es ? 'var(--phase)' : (on ? 'var(--live)' : 'var(--ink)');
     const cx = 140;
     parts.push(`<g data-in="${name}">`);
     parts.push(wire(Lx, yy, cx - 20, yy, on));
     parts.push(`<line x1="${cx - 20}" y1="${yy - 9}" x2="${cx - 20}" y2="${yy + 9}" stroke="${col}" stroke-width="2.1"/>`);
     parts.push(`<line x1="${cx + 4}" y1="${yy - 9}" x2="${cx + 4}" y2="${yy + 9}" stroke="${col}" stroke-width="2.1"/>`);
     parts.push(`<line x1="${cx - 20}" y1="${yy}" x2="${cx + 4}" y2="${on ? yy : yy - 10}" stroke="${col}" stroke-width="1.7"/>`);
-    parts.push(`<text x="${cx - 8}" y="${yy - 14}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">${name}</text>`);
+    if (es) {
+      // cabeza de seta de emergencia: círculo rojo sobre el símbolo del contacto
+      parts.push(`<circle cx="${cx - 8}" cy="${yy - 20}" r="7" fill="${on ? 'var(--phase)' : 'none'}" stroke="var(--phase)" stroke-width="2"/>`);
+    } else if (kind) {
+      drawDeviceGlyph(kind, cx - 8, yy, parts);
+    }
+    parts.push(`<text x="${cx - 8}" y="${yy - (hasIcon ? 30 : 14)}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="${es ? 'var(--phase)' : (kind ? 'var(--warn)' : 'var(--muted)')}">${name}</text>`);
     parts.push(wire(cx + 4, yy, logoX, yy, on));
     parts.push(`<text x="${logoX - 4}" y="${yy - 4}" text-anchor="end" font-family="var(--mono)" font-size="8" fill="var(--muted)">I${i + 1}</text>`);
     parts.push(`<rect x="${cx - 28}" y="${yy - 18}" width="48" height="32" fill="transparent"/>`);
@@ -192,7 +282,7 @@ function drawField(prog, st) {
  * los callbacks que app.js usa para reaccionar a los clics sobre los
  * símbolos de entrada dibujados en el propio diagrama.
  */
-export function drawAll(svgEl, program, states, tCnt, { onToggleInput, onPressStart, onPressEnd }) {
+export function drawAll(svgEl, program, states, counts, { onToggleInput, onPressStart, onPressEnd }) {
   if (!program) { svgEl.innerHTML = ''; return; }
   const parts = [];
   const ladderX = 720;
@@ -202,12 +292,24 @@ export function drawAll(svgEl, program, states, tCnt, { onToggleInput, onPressSt
   const rows = [];
   program.latches.forEach(l => rows.push({ label: l.name, ast: l.setAst, on: !!states[l.name], tag: 'SR' }));
   program.coils.forEach(c => rows.push({ label: c.name, ast: c.ast, on: !!states[c.name], tag: null }));
+  program.setResets.forEach(op => rows.push({
+    label: op.name, ast: op.ast, on: !!states[op.name],
+    tag: null, box: op.kind === 'set' ? 'S' : 'R',
+  }));
   program.timers.forEach(t => {
-    const tag = (t.kind === 'off' ? 'TOF ' : t.kind === 'pulse' ? 'TP ' : 'TON ') + (tCnt[t.name] || 0) + '/' + t.preset;
+    const tag = t.kind === 'flash'
+      ? 'FLASH ' + (counts[t.name] || 0) + '/' + (states[t.name] ? t.presetOn : t.presetOff)
+      : (t.kind === 'off' ? 'TOF ' : t.kind === 'pulse' ? 'TP ' : 'TON ') + (counts[t.name] || 0) + '/' + t.preset;
     rows.push({ label: t.name, ast: t.inAst, on: !!states[t.name], tag });
   });
+  program.counters.forEach(c => {
+    const tag = (c.kind === 'ctd' ? 'CTD ' : 'CTU ') + (counts[c.name] || 0) + '/' + c.preset;
+    rows.push({ label: c.name, ast: c.triggerAst, on: !!states[c.name], tag });
+  });
+  program.impulses.forEach(imp => rows.push({ label: imp.name, ast: imp.ast, on: !!states[imp.name], tag: 'IMP' }));
 
   let maxW = 0;
+  const poleMap = new Map(); // numeración de bornes por referencia, para todo el esquema
   rows.forEach((row, idx) => {
     const lay = layout(row.ast);
     const rowH = Math.max(lay.h, CH) + 30;
@@ -215,13 +317,28 @@ export function drawAll(svgEl, program, states, tCnt, { onToggleInput, onPressSt
     const ox = ladderX + rail;
     parts.push(`<line x1="${ox}" y1="${y}" x2="${ox}" y2="${y + rowH}" stroke="var(--ink)" stroke-width="2.5"/>`);
     parts.push(`<text x="${ox - 12}" y="${midY + 3}" text-anchor="end" font-family="var(--mono)" font-size="10" fill="var(--muted)">${idx + 1}</text>`);
-    drawExpr(lay, ox, y + (rowH - lay.h) / 2, states, parts);
+    drawExpr(lay, ox, y + (rowH - lay.h) / 2, states, parts, poleMap);
     const coilX = ox + lay.w + 34;
     parts.push(wire(ox + lay.w, midY, coilX - 16, midY, row.on));
     const col = row.on ? 'var(--live)' : 'var(--ink)';
-    parts.push(`<circle cx="${coilX}" cy="${midY}" r="15" fill="${row.on ? 'var(--live-soft)' : 'none'}" stroke="${col}" stroke-width="2.1"/>`);
+    // data-coil identifica el símbolo exacto de esta fila (círculo o caja
+    // S/R) para que la interfaz o las pruebas puedan localizarlo sin
+    // ambigüedad — el mismo nombre puede aparecer también como referencia
+    // de contacto en otra fila, o en el resumen de activos del LOGO!.
+    if (row.box) {
+      // símbolo IEC de bobina SET/RESET: cuadrado con la letra, no círculo
+      parts.push(`<rect data-coil="${row.label}" data-kind="${row.box}" x="${coilX - 14}" y="${midY - 14}" width="28" height="28" rx="3" fill="${row.on ? 'var(--live-soft)' : 'none'}" stroke="${col}" stroke-width="2.1"/>`);
+      parts.push(`<text x="${coilX}" y="${midY + 5}" text-anchor="middle" font-family="var(--mono)" font-size="13" font-weight="700" fill="${col}">${row.box}</text>`);
+    } else {
+      parts.push(`<circle data-coil="${row.label}" cx="${coilX}" cy="${midY}" r="15" fill="${row.on ? 'var(--live-soft)' : 'none'}" stroke="${col}" stroke-width="2.1"/>`);
+    }
     parts.push(`<text x="${coilX}" y="${y + 13}" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--ink)">${row.label}</text>`);
     if (row.tag) parts.push(`<text x="${coilX}" y="${midY + 4}" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="var(--muted)">${row.tag}</text>`);
+    if (!row.box) {
+      // bornas reales de la bobina de un contactor/relé: A1 (entrada), A2 (retorno)
+      parts.push(`<text x="${coilX - 15}" y="${midY + 25}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">A1</text>`);
+      parts.push(`<text x="${coilX + 15}" y="${midY + 25}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">A2</text>`);
+    }
     parts.push(`<line x1="${coilX + 16}" y1="${y}" x2="${coilX + 16}" y2="${y + rowH}" stroke="var(--ink)" stroke-width="2.5"/>`);
     maxW = Math.max(maxW, coilX + 40);
     y += rowH;

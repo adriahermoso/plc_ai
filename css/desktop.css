@@ -54,8 +54,12 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 #src:focus { background: #fdfdfc; }
 
 .canvas-wrap { flex: 1; position: relative; min-width: 0; background: #fafbfa; display: flex; flex-direction: column; }
-.canvas-scroll { flex: 1; overflow: auto; }
-#svg { display: block; min-width: 100%; }
+.canvas-scroll {
+  flex: 1; overflow: hidden; position: relative;
+  touch-action: none; cursor: grab; background: var(--bg);
+}
+.canvas-scroll.grabbing { cursor: grabbing; }
+#svg { display: block; }
 
 .toast { position: absolute; top: 12px; left: 12px; max-width: 440px; z-index: 5; display: none; }
 

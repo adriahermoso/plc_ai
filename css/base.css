@@ -105,6 +105,25 @@ select.select {
 .toast.ok { border-color: var(--live); color: var(--live); background: var(--ok-bg); }
 
 svg text { font-family: var(--mono); }
+#svg { transform-origin: 0 0; will-change: transform; }
+
+/* ─── Controles de navegación del lienzo (arrastre + zoom), compartidos ─── */
+.pan-reset-btn {
+  position: absolute; right: 12px; bottom: 12px; z-index: 10;
+  width: 42px; height: 42px; border-radius: 50%;
+  border: 1px solid var(--line-strong); background: var(--surface);
+  font-size: 17px; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,.14); color: var(--ink); cursor: pointer;
+}
+.pan-reset-btn:active { transform: scale(0.94); }
+.zoom-indicator {
+  position: absolute; right: 62px; bottom: 12px; z-index: 10;
+  padding: 0 10px; height: 42px; border-radius: 999px;
+  border: 1px solid var(--line-strong); background: var(--surface);
+  font-family: var(--mono); font-size: 12px; color: var(--muted);
+  display: flex; align-items: center; box-shadow: 0 2px 10px rgba(0,0,0,.1);
+  pointer-events: none; user-select: none;
+}
 
 /* ─── Panel de sintaxis (compartido) ─── */
 .help-panel {

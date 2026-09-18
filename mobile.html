@@ -28,6 +28,7 @@
 <div class="mcanvas-wrap">
   <div class="toast" id="toast"></div>
   <div class="canvas-scroll"><svg id="svg"></svg></div>
+  <button class="pan-reset-btn" id="btnResetView" title="Centrar vista">⌂</button>
 </div>
 
 <div class="mstatus" id="status">Listo</div>
@@ -84,6 +85,15 @@ RESET KM1 = SB2</code></div>
 </div>
 
 <script type="module" src="js/app.js"></script>
+<script type="module">
+  import { initPanning } from './js/pan.js';
+  const pan = initPanning(document.querySelector('.canvas-scroll'), document.getElementById('svg'));
+  document.getElementById('btnResetView').addEventListener('click', () => pan.reset());
+  // cada vez que se interpreta un programa nuevo (o se cambia de ejemplo),
+  // el diagrama puede tener un tamaño muy distinto — recentra la vista
+  document.getElementById('btnParse').addEventListener('click', () => pan.reset());
+  document.getElementById('examples').addEventListener('change', () => pan.reset());
+</script>
 <script>
   const drawer = document.getElementById('drawer');
   const btnMenu = document.getElementById('btnMenu');

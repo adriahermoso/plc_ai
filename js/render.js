@@ -6,6 +6,7 @@
 // bobina con dónde aparece cada uno de sus contactos.
 
 import { evalAst, isMom, isEStop, isThermal, isBreaker, isFuse, isDisconnect, isRCD, isLamp, computePowerNetwork } from './core.js';
+import { placeSymbol, glyphForName } from './components.js';
 
 const CW = 54, CH = 38, GAPX = 12, GAPY = 8;
 const COL_W = 110, ROW_H = 90; // tamaño de celda de la rejilla de coordenadas
@@ -86,18 +87,9 @@ function drawContact(x, midY, ref, no, closed, parts, ctx) {
   const cx = x + CW / 2, L = cx - 7, R = cx + 7;
   const col = closed ? 'var(--live)' : 'var(--ink)';
   const thermal = isThermal(ref);
-  parts.push(wire(x, midY, L, midY, closed));
-  parts.push(wire(R, midY, x + CW, midY, closed));
-  parts.push(`<line x1="${L}" y1="${midY - 4}" x2="${L}" y2="${midY + 4}" stroke="${col}" stroke-width="2"/>`);
-  parts.push(`<line x1="${R}" y1="${midY - 4}" x2="${R}" y2="${midY + 4}" stroke="${col}" stroke-width="2"/>`);
-  if (thermal) {
-    parts.push(`<path d="M ${L} ${midY + 4} Q ${cx} ${midY - 15} ${R} ${midY - 4}" fill="none" stroke="${col}" stroke-width="1.7"/>`);
-  } else {
-    parts.push(`<line x1="${L}" y1="${midY + 6}" x2="${R}" y2="${midY - 6}" stroke="${col}" stroke-width="1.7"/>`);
-  }
-  if (!no) {
-    parts.push(`<line x1="${cx - 3}" y1="${midY + 1}" x2="${cx + 3}" y2="${midY - 9}" stroke="${col}" stroke-width="1.7"/>`);
-  }
+  const symbolId = thermal ? 'CONTACT_THERMAL' : (no ? 'CONTACT_NO' : 'CONTACT_NC');
+  // el SVG del contacto ya incluye los terminales y la diagonal; se ancla en (x, midY - CH/2)
+  parts.push(placeSymbol(symbolId, x, midY - CH / 2, col));
   parts.push(`<text x="${cx}" y="${midY - 14}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">${ref}</text>`);
   const pole = nextPole(ref, ctx.poleMap);
   const p1 = `${pole}${no ? '3' : '1'}`, p2 = `${pole}${no ? '4' : '2'}`;
@@ -111,12 +103,9 @@ function drawContact(x, midY, ref, no, closed, parts, ctx) {
 // representa un borne físico real, es un bloque de programa).
 function drawEdgeContact(x, midY, ref, label, closed, parts) {
   const col = closed ? 'var(--live)' : 'var(--ink)';
-  const cx = x + CW / 2, L = cx - 6, R = cx + 6;
-  parts.push(wire(x, midY, L, midY, closed));
-  parts.push(wire(R, midY, x + CW, midY, closed));
-  parts.push(`<line x1="${L}" y1="${midY - 8}" x2="${L}" y2="${midY + 8}" stroke="${col}" stroke-width="2.2"/>`);
-  parts.push(`<line x1="${R}" y1="${midY - 8}" x2="${R}" y2="${midY + 8}" stroke="${col}" stroke-width="2.2"/>`);
-  parts.push(`<text x="${cx}" y="${midY + 3}" text-anchor="middle" font-family="var(--mono)" font-size="8" font-weight="700" fill="${col}">${label}</text>`);
+  const cx = x + CW / 2;
+  const symbolId = label === 'P' ? 'CONTACT_EDGE_P' : 'CONTACT_EDGE_N';
+  parts.push(placeSymbol(symbolId, x, midY - CH / 2, col));
   parts.push(`<text x="${cx}" y="${midY - 14}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">${ref}</text>`);
 }
 
@@ -196,28 +185,27 @@ function drawExpr(lay, x, y, st, parts, ctx) {
  */
 function drawCoilSymbol(coilX, topY, midY, label, on, opts, parts) {
   const col = on ? 'var(--live)' : 'var(--ink)';
+  const fill = on ? 'var(--live-soft)' : 'none';
   if (opts.lamp) {
-    parts.push(`<circle data-coil="${label}" cx="${coilX}" cy="${midY}" r="13" fill="${on ? 'var(--live-soft)' : 'none'}" stroke="${col}" stroke-width="2.1"/>`);
-    parts.push(`<line x1="${coilX - 9}" y1="${midY - 9}" x2="${coilX + 9}" y2="${midY + 9}" stroke="${col}" stroke-width="1.4"/>`);
-    parts.push(`<line x1="${coilX + 9}" y1="${midY - 9}" x2="${coilX - 9}" y2="${midY + 9}" stroke="${col}" stroke-width="1.4"/>`);
+    parts.push(placeSymbol('LAMP', coilX, midY, col, { center: true, dataAttrs: { coil: label } }));
+    // relleno de estado (el SVG base no lleva fill dinámico)
+    if (on) parts.push(`<circle cx="${coilX}" cy="${midY}" r="12" fill="var(--live-soft)" opacity="0.5"/>`);
     parts.push(`<text x="${coilX}" y="${topY + 13}" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--ink)">${label}</text>`);
     return;
   }
   if (opts.box) {
-    parts.push(`<rect data-coil="${label}" data-kind="${opts.box}" x="${coilX - 14}" y="${midY - 14}" width="28" height="28" rx="3" fill="${on ? 'var(--live-soft)' : 'none'}" stroke="${col}" stroke-width="2.1"/>`);
-    parts.push(`<text x="${coilX}" y="${midY + 5}" text-anchor="middle" font-family="var(--mono)" font-size="13" font-weight="700" fill="${col}">${opts.box}</text>`);
+    const sid = opts.box === 'S' ? 'COIL_SET' : 'COIL_RESET';
+    parts.push(placeSymbol(sid, coilX, midY, col, { center: true, dataAttrs: { coil: label, kind: opts.box } }));
+    if (on) parts.push(`<rect x="${coilX - 13}" y="${midY - 13}" width="26" height="26" rx="3" fill="var(--live-soft)" opacity="0.45"/>`);
     parts.push(`<text x="${coilX - 24}" y="${midY + 4}" text-anchor="end" font-family="var(--mono)" font-size="11" fill="var(--ink)">${label}</text>`);
     if (opts.tag) parts.push(`<text x="${coilX}" y="${topY + 13}" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="var(--muted)">${opts.tag}</text>`);
     return;
   }
-  const bw = 24, bh = 32;
-  parts.push(`<rect data-coil="${label}" x="${coilX - bw / 2}" y="${midY - bh / 2}" width="${bw}" height="${bh}" rx="2" fill="${on ? 'var(--live-soft)' : 'none'}" stroke="${col}" stroke-width="2.1"/>`);
-  parts.push(`<text x="${coilX}" y="${midY - bh / 2 - 5}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">A1</text>`);
-  parts.push(`<text x="${coilX}" y="${midY + bh / 2 + 11}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">A2</text>`);
-  parts.push(`<text x="${coilX - bw / 2 - 8}" y="${midY + 4}" text-anchor="end" font-family="var(--mono)" font-size="11" fill="var(--ink)">${label}</text>`);
-  if (opts.timer) {
-    parts.push(`<path d="M ${coilX - 6} ${midY - 7} L ${coilX + 6} ${midY - 7} L ${coilX - 6} ${midY + 7} L ${coilX + 6} ${midY + 7} Z" fill="none" stroke="${col}" stroke-width="1.2"/>`);
-  }
+  const sid = opts.timer ? 'COIL_TIMER' : 'COIL_GENERIC';
+  // COIL_* viewBox 50x90, centro del rectángulo de bobina ~ (25, 45)
+  parts.push(placeSymbol(sid, coilX - 25, midY - 45, col, { dataAttrs: { coil: label } }));
+  if (on) parts.push(`<rect x="${coilX - 12}" y="${midY - 25}" width="24" height="50" rx="2" fill="var(--live-soft)" opacity="0.45"/>`);
+  parts.push(`<text x="${coilX - 20}" y="${midY + 4}" text-anchor="end" font-family="var(--mono)" font-size="11" fill="var(--ink)">${label}</text>`);
   if (opts.tag) parts.push(`<text x="${coilX}" y="${topY + 13}" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="var(--muted)">${opts.tag}</text>`);
 }
 
@@ -227,25 +215,17 @@ function drawCoilSymbol(coilX, topY, midY, label, on, opts, parts) {
 // pensadas para distinguirse de un vistazo sin sobrecargar el esquema.
 function drawDeviceGlyph(kind, cx, yy, parts) {
   const col = 'var(--warn)';
-  const gy = yy - 20;
-  if (kind === 'thermal') {
-    parts.push(`<rect x="${cx - 9}" y="${gy - 6}" width="18" height="12" rx="1.5" fill="none" stroke="${col}" stroke-width="1.6"/>`);
-    parts.push(`<polyline points="${cx - 6},${gy} ${cx - 3},${gy - 4} ${cx},${gy} ${cx + 3},${gy - 4} ${cx + 6},${gy}" fill="none" stroke="${col}" stroke-width="1.3"/>`);
-  } else if (kind === 'breaker') {
-    parts.push(`<rect x="${cx - 9}" y="${gy - 11}" width="18" height="18" rx="2" fill="none" stroke="${col}" stroke-width="1.4"/>`);
-    parts.push(`<circle cx="${cx}" cy="${gy + 5}" r="1.6" fill="${col}"/>`);
-    parts.push(`<line x1="${cx}" y1="${gy + 4}" x2="${cx + 6}" y2="${gy - 5}" stroke="${col}" stroke-width="1.8"/>`);
-  } else if (kind === 'fuse') {
-    parts.push(`<rect x="${cx - 4}" y="${gy - 7}" width="8" height="14" rx="4" fill="none" stroke="${col}" stroke-width="1.6"/>`);
-    parts.push(`<line x1="${cx}" y1="${gy - 9}" x2="${cx}" y2="${gy + 9}" stroke="${col}" stroke-width="1.2"/>`);
-  } else if (kind === 'disconnect') {
-    parts.push(`<line x1="${cx - 6}" y1="${gy + 5}" x2="${cx + 6}" y2="${gy - 6}" stroke="${col}" stroke-width="2.2"/>`);
-    parts.push(`<circle cx="${cx - 6}" cy="${gy + 5}" r="1.6" fill="${col}"/>`);
-    parts.push(`<circle cx="${cx + 6}" cy="${gy - 6}" r="1.6" fill="${col}"/>`);
-  } else if (kind === 'rcd') {
-    parts.push(`<circle cx="${cx}" cy="${gy}" r="7" fill="none" stroke="${col}" stroke-width="1.6"/>`);
-    parts.push(`<text x="${cx}" y="${gy + 3}" text-anchor="middle" font-family="var(--mono)" font-size="8" font-weight="700" fill="${col}">Δ</text>`);
-  }
+  const map = {
+    thermal: 'GLYPH_THERMAL',
+    breaker: 'GLYPH_BREAKER',
+    fuse: 'GLYPH_FUSE',
+    disconnect: 'GLYPH_DISCONNECT',
+    rcd: 'GLYPH_RCD',
+  };
+  const sid = map[kind];
+  if (!sid) return;
+  // anclar el glifo centrado encima del interruptor de campo
+  parts.push(placeSymbol(sid, cx, yy - 28, col, { center: true }));
 }
 
 function drawField(prog, st) {
@@ -317,11 +297,12 @@ function drawField(prog, st) {
     const cx = 140;
     parts.push(`<g data-in="${name}">`);
     parts.push(wire(Lx, yy, cx - 20, yy, on));
-    parts.push(`<line x1="${cx - 20}" y1="${yy - 9}" x2="${cx - 20}" y2="${yy + 9}" stroke="${col}" stroke-width="2.1"/>`);
-    parts.push(`<line x1="${cx + 4}" y1="${yy - 9}" x2="${cx + 4}" y2="${yy + 9}" stroke="${col}" stroke-width="2.1"/>`);
-    parts.push(`<line x1="${cx - 20}" y1="${yy}" x2="${cx + 4}" y2="${on ? yy : yy - 10}" stroke="${col}" stroke-width="1.7"/>`);
+    const swId = on ? 'INPUT_SWITCH_CLOSED' : 'INPUT_SWITCH_OPEN';
+    // INPUT_SWITCH viewBox 50x40; el centro del interruptor queda en (cx-8, yy)
+    parts.push(placeSymbol(swId, cx - 28, yy - 20, col));
     if (es) {
-      parts.push(`<circle cx="${cx - 8}" cy="${yy - 20}" r="7" fill="${on ? 'var(--phase)' : 'none'}" stroke="var(--phase)" stroke-width="2"/>`);
+      parts.push(placeSymbol('ESTOP_HEAD', cx - 8, yy - 28, on ? 'var(--phase)' : 'var(--phase)', { center: true }));
+      if (on) parts.push(`<circle cx="${cx - 8}" cy="${yy - 28}" r="7" fill="var(--phase)" opacity="0.5"/>`);
     } else if (kind) {
       drawDeviceGlyph(kind, cx - 8, yy, parts);
     }
@@ -340,9 +321,8 @@ function drawField(prog, st) {
     const lx = 480;
     parts.push(wire(qx, logoY + logoH, qx, yy, on));
     parts.push(wire(qx, yy, lx - 14, yy, on));
-    parts.push(`<circle cx="${lx}" cy="${yy}" r="13" fill="${on ? 'var(--live-soft)' : 'none'}" stroke="${col}" stroke-width="2"/>`);
-    parts.push(`<line x1="${lx - 9}" y1="${yy - 9}" x2="${lx + 9}" y2="${yy + 9}" stroke="${col}" stroke-width="1.5"/>`);
-    parts.push(`<line x1="${lx + 9}" y1="${yy - 9}" x2="${lx - 9}" y2="${yy + 9}" stroke="${col}" stroke-width="1.5"/>`);
+    parts.push(placeSymbol('LAMP', lx, yy, col, { center: true }));
+    if (on) parts.push(`<circle cx="${lx}" cy="${yy}" r="12" fill="var(--live-soft)" opacity="0.5"/>`);
     parts.push(`<text x="${lx}" y="${yy - 18}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">${name}</text>`);
     parts.push(wire(lx + 14, yy, Nx, yy, on));
     parts.push(`<text x="${qx}" y="${logoY + logoH + 12}" text-anchor="middle" font-family="var(--mono)" font-size="7.5" fill="var(--muted)">${outAddr(i)}</text>`);
@@ -398,15 +378,9 @@ function drawPowerDevice(link, st, net, x, y, parts) {
   if (boxed) {
     parts.push(`<rect x="${lines[0] - 8}" y="${midY - 13}" width="${lines[2] - lines[0] + 16}" height="26" rx="2" fill="none" stroke="${col}" stroke-width="1.3" stroke-dasharray="2,2"/>`);
   }
-  lines.forEach(lx => {
-    parts.push(`<line x1="${lx}" y1="${midY - 8}" x2="${lx}" y2="${midY - 3}" stroke="${col}" stroke-width="2.4"/>`);
-    if (on) {
-      parts.push(`<line x1="${lx}" y1="${midY - 3}" x2="${lx}" y2="${midY + 3}" stroke="${col}" stroke-width="2.4"/>`);
-    } else {
-      parts.push(`<line x1="${lx}" y1="${midY - 3}" x2="${lx + 6}" y2="${midY + 4}" stroke="${col}" stroke-width="2"/>`);
-    }
-    parts.push(`<line x1="${lx}" y1="${midY + 3}" x2="${lx}" y2="${midY + 8}" stroke="${col}" stroke-width="2.4"/>`);
-  });
+  const sid = on ? 'POWER_3POLE_CLOSED' : 'POWER_3POLE_OPEN';
+  // POWER_3POLE viewBox ~70x50; anclar para que los 3 polos coincidan con lines[]
+  parts.push(placeSymbol(sid, lines[0] - 10, midY - 25, col));
   const labelX = lines[2] + 14;
   parts.push(`<text x="${labelX}" y="${midY + 3}" font-family="var(--mono)" font-size="10.5" font-weight="600" fill="${col}">${link.name}</text>`);
   if (tripped) parts.push(`<text x="${labelX}" y="${midY + 15}" font-family="var(--mono)" font-size="8" font-weight="700" fill="var(--phase)">⚠ DISPARADO</text>`);
@@ -461,14 +435,9 @@ function drawPower(prog, st) {
     const mcx = lines[1], mcy = y + 28 + 22;
     const mcol = r.shorted ? 'var(--phase)' : (r.energized ? 'var(--live)' : 'var(--ink)');
     const isLoadKind = motor.kind === 'load';
-    parts.push(`<circle data-coil="${motor.name}" cx="${mcx}" cy="${mcy}" r="20" fill="${r.energized ? 'var(--live-soft)' : 'none'}" stroke="${mcol}" stroke-width="2.4"/>`);
-    if (isLoadKind) {
-      parts.push(`<line x1="${mcx - 9}" y1="${mcy - 9}" x2="${mcx + 9}" y2="${mcy + 9}" stroke="${mcol}" stroke-width="1.6"/>`);
-      parts.push(`<line x1="${mcx + 9}" y1="${mcy - 9}" x2="${mcx - 9}" y2="${mcy + 9}" stroke="${mcol}" stroke-width="1.6"/>`);
-    } else {
-      parts.push(`<text x="${mcx}" y="${mcy - 2}" text-anchor="middle" font-family="var(--mono)" font-size="13" font-weight="700" fill="${mcol}">M</text>`);
-      parts.push(`<text x="${mcx}" y="${mcy + 10}" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="${mcol}">3~</text>`);
-    }
+    const motorSid = isLoadKind ? 'LOAD' : 'MOTOR_3PH';
+    parts.push(placeSymbol(motorSid, mcx, mcy, mcol, { center: true, dataAttrs: { coil: motor.name } }));
+    if (r.energized) parts.push(`<circle cx="${mcx}" cy="${mcy}" r="18" fill="var(--live-soft)" opacity="0.45"/>`);
     parts.push(`<text x="${mcx}" y="${mcy + 36}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">${motor.name}</text>`);
     if (r.shorted) parts.push(`<text x="${mcx}" y="${mcy + 48}" text-anchor="middle" font-family="var(--mono)" font-size="8" font-weight="700" fill="var(--phase)">⚡ CORTOCIRCUITO</text>`);
     else if (r.energized && !isLoadKind) parts.push(`<text x="${mcx + 30}" y="${mcy + 6}" text-anchor="middle" font-size="17" fill="${mcol}">${r.rotation === 'ccw' ? '↺' : '↻'}</text>`);

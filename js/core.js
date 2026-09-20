@@ -391,7 +391,7 @@ export function parseProgram(text) {
 
   // resolver el tipo de cada LINK (protección, por convención de nombre
   // QM/FT/FU/QS/DIF, o contactor: una salida del circuito de control)
-  const protectivePrefix = /^(QM|FT|FU|QS|DIF|RCD)/i;
+  const protectivePrefix = /^(QM|QF|FT|FR|FU|QS|DIF|RCD)/i;
   powerLinks.forEach(link => {
     if (inputs.includes(link.name)) {
       if (!protectivePrefix.test(link.name)) {
@@ -609,11 +609,12 @@ export function isEStop(name) {
 // Convenciones de nombre para dispositivos de protección/maniobra —
 // controlan qué símbolo se dibuja en el diagrama de campo, no cambian la
 // simulación (siguen siendo entradas booleanas normales).
-export function isThermal(name) { return /^FT/i.test(name); }      // relé térmico
-export function isBreaker(name) { return /^QM/i.test(name); }      // magnetotérmico/guardamotor
+export function isThermal(name) { return /^(FT|FR)/i.test(name); }  // relé térmico (FT o FR, según el material)
+export function isBreaker(name) { return /^(QM|QF)/i.test(name); }  // magnetotérmico/guardamotor (QM o QF)
 export function isFuse(name) { return /^FU/i.test(name); }         // fusible
 export function isDisconnect(name) { return /^QS/i.test(name); }   // seccionador
 export function isRCD(name) { return /^(DIF|RCD)/i.test(name); }   // diferencial
+export function isLamp(name) { return /^(HL|EL)/i.test(name); }    // lámpara de señalización
 
 export function blankState(prog) {
   const st = {};

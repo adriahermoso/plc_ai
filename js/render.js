@@ -1,12 +1,15 @@
-// render.js — construcción del SVG (escalera de contactos + módulo LOGO!).
-// Extraído del index.html original; el comportamiento de dibujo es idéntico,
-// solo se ha parametrizado (antes leía `states`/`tCnt` como variables
-// globales del script; ahora se le pasan explícitamente) para poder vivir
-// en su propio módulo sin depender de app.js.
+// render.js — construcción del SVG (esquema de potencia + campo/LOGO! +
+// escalera de contactos), con un estilo más cercano a CADe_SIMU: bobinas
+// como rectángulo con A1/A2, lámparas como círculo con X, contactos en
+// diagonal, térmico con gancho curvo, rejilla de coordenadas (columnas
+// A/B/C.../filas 1/2/3...) y una tabla de referencias cruzadas bajo cada
+// bobina con dónde aparece cada uno de sus contactos.
 
-import { evalAst, isMom, isEStop, isThermal, isBreaker, isFuse, isDisconnect, isRCD, computePowerNetwork } from './core.js';
+import { evalAst, isMom, isEStop, isThermal, isBreaker, isFuse, isDisconnect, isRCD, isLamp, computePowerNetwork } from './core.js';
 
 const CW = 54, CH = 38, GAPX = 12, GAPY = 8;
+const COL_W = 110, ROW_H = 90; // tamaño de celda de la rejilla de coordenadas
+const MARGIN_L = 28, MARGIN_T = 22; // hueco para las letras/números de la rejilla
 
 export function layout(node) {
   if (node.type === 'contact') return { w: CW, h: CH, node };
@@ -41,37 +44,71 @@ function wire(x1, y1, x2, y2, on) {
   return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${on ? 'var(--live)' : 'var(--ink)'}" stroke-width="${on ? 2.3 : 1.35}"/>`;
 }
 
+// Coordenada de rejilla (columna con letra, fila con número) para una
+// posición del lienzo — es la misma rejilla que se dibuja como fondo, así
+// que cualquier punto puede localizarse por su celda, como en CADe_SIMU.
+function gridCoordAt(x, y) {
+  const c = Math.max(0, Math.floor(x / COL_W));
+  const r = Math.max(0, Math.floor(y / ROW_H));
+  const letter = String.fromCharCode(65 + (c % 26));
+  return `${letter}${r + 1}`;
+}
+
+function drawGridOverlay(totalW, totalH) {
+  const parts = [];
+  for (let x = 0, c = 0; x < totalW; x += COL_W, c++) {
+    const letter = String.fromCharCode(65 + (c % 26));
+    parts.push(`<text x="${x + COL_W / 2}" y="14" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="var(--muted)" opacity="0.55">${letter}</text>`);
+    parts.push(`<line x1="${x}" y1="0" x2="${x}" y2="${totalH}" stroke="var(--line)" stroke-width="0.6" opacity="0.35"/>`);
+  }
+  for (let y = 0, r = 0; y < totalH; y += ROW_H, r++) {
+    parts.push(`<text x="12" y="${y + ROW_H / 2 + 3}" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="var(--muted)" opacity="0.55">${r + 1}</text>`);
+    parts.push(`<line x1="0" y1="${y}" x2="${totalW}" y2="${y}" stroke="var(--line)" stroke-width="0.6" opacity="0.35"/>`);
+  }
+  return parts.join('');
+}
+
 // Numeración de bornes por convención IEC 60947-5-1: cada bloque de
 // contactos de un mismo dispositivo se numera 13/14, 23/24, 33/34, 43/44
 // (NA) o 11/12, 21/22, 31/32, 41/42 (NC) — el dígito de las decenas es el
-// número de polo/bloque. poleMap lleva la cuenta de cuántas veces se ha
-// dibujado cada referencia en todo el esquema (una Map compartida por
-// todo el drawAll(), reiniciada en cada redibujado).
+// número de polo/bloque.
 function nextPole(ref, poleMap) {
   const idx = poleMap.get(ref) || 0;
   poleMap.set(ref, idx + 1);
-  return (idx % 4) + 1; // los bloques reales de un contactor no pasan de 4
+  return (idx % 4) + 1;
 }
 
-function drawContact(x, midY, ref, no, closed, parts, poleMap) {
+// Contacto NA/NC: un trazo diagonal entre dos puntos de terminal (como un
+// interruptor de cuchilla), con el nombre arriba y la numeración de
+// bornes abajo. Los contactos de un relé térmico se dibujan con un gancho
+// curvo en vez de recto, para distinguirlos de un contacto normal.
+function drawContact(x, midY, ref, no, closed, parts, ctx) {
+  const cx = x + CW / 2, L = cx - 7, R = cx + 7;
   const col = closed ? 'var(--live)' : 'var(--ink)';
-  const cx = x + CW / 2, L = cx - 6, R = cx + 6;
+  const thermal = isThermal(ref);
   parts.push(wire(x, midY, L, midY, closed));
   parts.push(wire(R, midY, x + CW, midY, closed));
-  parts.push(`<line x1="${L}" y1="${midY - 8}" x2="${L}" y2="${midY + 8}" stroke="${col}" stroke-width="2.2"/>`);
-  parts.push(`<line x1="${R}" y1="${midY - 8}" x2="${R}" y2="${midY + 8}" stroke="${col}" stroke-width="2.2"/>`);
+  parts.push(`<line x1="${L}" y1="${midY - 4}" x2="${L}" y2="${midY + 4}" stroke="${col}" stroke-width="2"/>`);
+  parts.push(`<line x1="${R}" y1="${midY - 4}" x2="${R}" y2="${midY + 4}" stroke="${col}" stroke-width="2"/>`);
+  if (thermal) {
+    parts.push(`<path d="M ${L} ${midY + 4} Q ${cx} ${midY - 15} ${R} ${midY - 4}" fill="none" stroke="${col}" stroke-width="1.7"/>`);
+  } else {
+    parts.push(`<line x1="${L}" y1="${midY + 6}" x2="${R}" y2="${midY - 6}" stroke="${col}" stroke-width="1.7"/>`);
+  }
   if (!no) {
-    parts.push(`<line x1="${L - 2}" y1="${midY + 9}" x2="${R + 2}" y2="${midY - 9}" stroke="${col}" stroke-width="1.7"/>`);
+    parts.push(`<line x1="${cx - 3}" y1="${midY + 1}" x2="${cx + 3}" y2="${midY - 9}" stroke="${col}" stroke-width="1.7"/>`);
   }
   parts.push(`<text x="${cx}" y="${midY - 14}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">${ref}</text>`);
-  const pole = nextPole(ref, poleMap);
-  parts.push(`<text x="${L}" y="${midY + 20}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">${pole}${no ? '3' : '1'}</text>`);
-  parts.push(`<text x="${R}" y="${midY + 20}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">${pole}${no ? '4' : '2'}</text>`);
+  const pole = nextPole(ref, ctx.poleMap);
+  const p1 = `${pole}${no ? '3' : '1'}`, p2 = `${pole}${no ? '4' : '2'}`;
+  parts.push(`<text x="${L}" y="${midY + 20}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">${p1}</text>`);
+  parts.push(`<text x="${R}" y="${midY + 20}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">${p2}</text>`);
+  ctx.contactLog.push({ ref, pair: `${p1}-${p2}`, x: cx, y: midY });
 }
 
-// Contacto de flanco P()/N(): mismos trazos que un contacto normal, pero
-// con la letra P/N en vez de la diagonal NC, y sin numeración de bornes
-// (no representa un borne físico real, es un bloque de programa).
+// Contacto de flanco P()/N(): igual que un contacto normal, pero con la
+// letra P/N en vez de la diagonal, y sin numeración de bornes (no
+// representa un borne físico real, es un bloque de programa).
 function drawEdgeContact(x, midY, ref, label, closed, parts) {
   const col = closed ? 'var(--live)' : 'var(--ink)';
   const cx = x + CW / 2, L = cx - 6, R = cx + 6;
@@ -83,23 +120,23 @@ function drawEdgeContact(x, midY, ref, label, closed, parts) {
   parts.push(`<text x="${cx}" y="${midY - 14}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">${ref}</text>`);
 }
 
-function drawExpr(lay, x, y, st, parts, poleMap) {
+function drawExpr(lay, x, y, st, parts, ctx) {
   const midY = y + lay.h / 2;
   const n = lay.node;
   if (n.type === 'contact') {
     const closed = n.no ? !!st[n.ref] : !st[n.ref];
-    drawContact(x, midY, n.ref, n.no, closed, parts, poleMap);
+    drawContact(x, midY, n.ref, n.no, closed, parts, ctx);
     return;
   }
   if (n.type === 'not' && n.child.type === 'contact') {
     const ref = n.child.ref;
     const closed = !st[ref];
-    drawContact(x, midY, ref, false, closed, parts, poleMap);
+    drawContact(x, midY, ref, false, closed, parts, ctx);
     return;
   }
   if (n.type === 'not') {
     const cl = lay.children[0];
-    drawExpr(cl, x + 8, y + (lay.h - cl.h) / 2, st, parts, poleMap);
+    drawExpr(cl, x + 8, y + (lay.h - cl.h) / 2, st, parts, ctx);
     return;
   }
   if (n.type === 'pedge' || n.type === 'nedge') {
@@ -108,17 +145,15 @@ function drawExpr(lay, x, y, st, parts, poleMap) {
       drawEdgeContact(x, midY, n.child.ref, label, evalAst(n, st), parts);
       return;
     }
-    // caso compuesto (poco habitual): dibuja la red normal y añade la
-    // etiqueta P/N flotando encima, ya que el flanco no tiene un único borne
     const cl = lay.children[0];
-    drawExpr(cl, x, y, st, parts, poleMap);
+    drawExpr(cl, x, y, st, parts, ctx);
     parts.push(`<text x="${x + 4}" y="${y - 2}" font-family="var(--mono)" font-size="9" font-weight="700" fill="var(--warn)">${label}</text>`);
     return;
   }
   if (n.type === 'and') {
     let cx = x;
     lay.children.forEach((cl, i) => {
-      drawExpr(cl, cx, y + (lay.h - cl.h) / 2, st, parts, poleMap);
+      drawExpr(cl, cx, y + (lay.h - cl.h) / 2, st, parts, ctx);
       if (i < lay.children.length - 1) {
         const on = n.children.slice(0, i + 1).every(c => evalAst(c, st));
         parts.push(wire(cx + cl.w, midY, cx + cl.w + GAPX, midY, on));
@@ -133,7 +168,7 @@ function drawExpr(lay, x, y, st, parts, poleMap) {
   const ys = [];
   lay.children.forEach(cl => {
     ys.push(cy + cl.h / 2);
-    drawExpr(cl, x + stub, cy, st, parts, poleMap);
+    drawExpr(cl, x + stub, cy, st, parts, ctx);
     cy += cl.h + GAPY;
   });
   const top = ys[0], bot = ys[ys.length - 1];
@@ -147,6 +182,43 @@ function drawExpr(lay, x, y, st, parts, poleMap) {
     const on = evalAst(n.children[i], st);
     parts.push(wire(x + stub + cl.w, ys[i], rx, ys[i], on));
   });
+  const wnum = ctx.wireNum.n++;
+  parts.push(`<text x="${x + stub}" y="${top - 4}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)" opacity="0.75">${wnum}</text>`);
+}
+
+/**
+ * Símbolo de bobina/lámpara al final de una fila de la escalera:
+ *  - lámpara (prefijo HL/EL): círculo con X, como en CADe_SIMU.
+ *  - SET/RESET: cuadrado con la letra S/R (símbolo IEC de asignación).
+ *  - resto (COIL/LATCH/TIMER/COUNTER/IMPULSE): rectángulo con A1 arriba,
+ *    A2 abajo, y el nombre escrito a la izquierda — como una bobina de
+ *    contactor real. Los TIMER llevan además un reloj de arena dentro.
+ */
+function drawCoilSymbol(coilX, topY, midY, label, on, opts, parts) {
+  const col = on ? 'var(--live)' : 'var(--ink)';
+  if (opts.lamp) {
+    parts.push(`<circle data-coil="${label}" cx="${coilX}" cy="${midY}" r="13" fill="${on ? 'var(--live-soft)' : 'none'}" stroke="${col}" stroke-width="2.1"/>`);
+    parts.push(`<line x1="${coilX - 9}" y1="${midY - 9}" x2="${coilX + 9}" y2="${midY + 9}" stroke="${col}" stroke-width="1.4"/>`);
+    parts.push(`<line x1="${coilX + 9}" y1="${midY - 9}" x2="${coilX - 9}" y2="${midY + 9}" stroke="${col}" stroke-width="1.4"/>`);
+    parts.push(`<text x="${coilX}" y="${topY + 13}" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--ink)">${label}</text>`);
+    return;
+  }
+  if (opts.box) {
+    parts.push(`<rect data-coil="${label}" data-kind="${opts.box}" x="${coilX - 14}" y="${midY - 14}" width="28" height="28" rx="3" fill="${on ? 'var(--live-soft)' : 'none'}" stroke="${col}" stroke-width="2.1"/>`);
+    parts.push(`<text x="${coilX}" y="${midY + 5}" text-anchor="middle" font-family="var(--mono)" font-size="13" font-weight="700" fill="${col}">${opts.box}</text>`);
+    parts.push(`<text x="${coilX - 24}" y="${midY + 4}" text-anchor="end" font-family="var(--mono)" font-size="11" fill="var(--ink)">${label}</text>`);
+    if (opts.tag) parts.push(`<text x="${coilX}" y="${topY + 13}" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="var(--muted)">${opts.tag}</text>`);
+    return;
+  }
+  const bw = 24, bh = 32;
+  parts.push(`<rect data-coil="${label}" x="${coilX - bw / 2}" y="${midY - bh / 2}" width="${bw}" height="${bh}" rx="2" fill="${on ? 'var(--live-soft)' : 'none'}" stroke="${col}" stroke-width="2.1"/>`);
+  parts.push(`<text x="${coilX}" y="${midY - bh / 2 - 5}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">A1</text>`);
+  parts.push(`<text x="${coilX}" y="${midY + bh / 2 + 11}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">A2</text>`);
+  parts.push(`<text x="${coilX - bw / 2 - 8}" y="${midY + 4}" text-anchor="end" font-family="var(--mono)" font-size="11" fill="var(--ink)">${label}</text>`);
+  if (opts.timer) {
+    parts.push(`<path d="M ${coilX - 6} ${midY - 7} L ${coilX + 6} ${midY - 7} L ${coilX - 6} ${midY + 7} L ${coilX + 6} ${midY + 7} Z" fill="none" stroke="${col}" stroke-width="1.2"/>`);
+  }
+  if (opts.tag) parts.push(`<text x="${coilX}" y="${topY + 13}" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="var(--muted)">${opts.tag}</text>`);
 }
 
 // Iconos distintivos para los dispositivos de protección/maniobra
@@ -160,8 +232,9 @@ function drawDeviceGlyph(kind, cx, yy, parts) {
     parts.push(`<rect x="${cx - 9}" y="${gy - 6}" width="18" height="12" rx="1.5" fill="none" stroke="${col}" stroke-width="1.6"/>`);
     parts.push(`<polyline points="${cx - 6},${gy} ${cx - 3},${gy - 4} ${cx},${gy} ${cx + 3},${gy - 4} ${cx + 6},${gy}" fill="none" stroke="${col}" stroke-width="1.3"/>`);
   } else if (kind === 'breaker') {
-    parts.push(`<circle cx="${cx}" cy="${gy + 5}" r="1.8" fill="${col}"/>`);
-    parts.push(`<line x1="${cx}" y1="${gy + 5}" x2="${cx + 8}" y2="${gy - 6}" stroke="${col}" stroke-width="2"/>`);
+    parts.push(`<rect x="${cx - 9}" y="${gy - 11}" width="18" height="18" rx="2" fill="none" stroke="${col}" stroke-width="1.4"/>`);
+    parts.push(`<circle cx="${cx}" cy="${gy + 5}" r="1.6" fill="${col}"/>`);
+    parts.push(`<line x1="${cx}" y1="${gy + 4}" x2="${cx + 6}" y2="${gy - 5}" stroke="${col}" stroke-width="1.8"/>`);
   } else if (kind === 'fuse') {
     parts.push(`<rect x="${cx - 4}" y="${gy - 7}" width="8" height="14" rx="4" fill="none" stroke="${col}" stroke-width="1.6"/>`);
     parts.push(`<line x1="${cx}" y1="${gy - 9}" x2="${cx}" y2="${gy + 9}" stroke="${col}" stroke-width="1.2"/>`);
@@ -248,7 +321,6 @@ function drawField(prog, st) {
     parts.push(`<line x1="${cx + 4}" y1="${yy - 9}" x2="${cx + 4}" y2="${yy + 9}" stroke="${col}" stroke-width="2.1"/>`);
     parts.push(`<line x1="${cx - 20}" y1="${yy}" x2="${cx + 4}" y2="${on ? yy : yy - 10}" stroke="${col}" stroke-width="1.7"/>`);
     if (es) {
-      // cabeza de seta de emergencia: círculo rojo sobre el símbolo del contacto
       parts.push(`<circle cx="${cx - 8}" cy="${yy - 20}" r="7" fill="${on ? 'var(--phase)' : 'none'}" stroke="var(--phase)" stroke-width="2"/>`);
     } else if (kind) {
       drawDeviceGlyph(kind, cx - 8, yy, parts);
@@ -276,9 +348,6 @@ function drawField(prog, st) {
     parts.push(`<text x="${qx}" y="${logoY + logoH + 12}" text-anchor="middle" font-family="var(--mono)" font-size="7.5" fill="var(--muted)">${outAddr(i)}</text>`);
   });
 
-  // módulos de expansión (solo informativos: nuestro modelo de E/S no
-  // reserva bornes físicos reales, así que aquí no añaden entradas/salidas
-  // utilizables — son una referencia visual de que "ahí irían")
   (prog.expansions || []).forEach((name, i) => {
     const ex = Nx + 44 + i * 96;
     const exY = logoY;
@@ -294,19 +363,9 @@ function drawField(prog, st) {
   return { svg: parts.join(''), h };
 }
 
-/**
- * Dibuja el esquema completo (campo + LOGO! + escalera) dentro de `svgEl`.
- * `onToggleInput(name)` / `onPressStart(name)` / `onPressEnd(name)` son
- * los callbacks que app.js usa para reaccionar a los clics sobre los
- * símbolos de entrada dibujados en el propio diagrama.
- */
-// ─── Circuito de potencia (Grupo 2): busbars L1/L2/L3, con los
-// dispositivos organizados por "generación" topológica (cuántos pasos les
-// separan de la fuente), así que las ramas (p. ej. un inversor de giro
-// KM1/KM2 compartiendo el mismo bus de QM1) se dibujan una al lado de la
-// otra en vez de una encima de otra.
+// ─── Circuito de potencia (Grupo 2) ───
 function computeLinkDepths(prog) {
-  const nodeDepth = { L1: 0, L2: 0, L3: 0 };
+  const nodeDepth = { L1: 0, L2: 0, L3: 0, N: 0, PE: 0 };
   const linkDepth = {};
   for (let pass = 0; pass < 50; pass++) {
     let changed = false;
@@ -334,7 +393,11 @@ function drawPowerDevice(link, st, net, x, y, parts) {
   const rowH = 46;
   const midY = y + rowH / 2;
   const col = tripped ? 'var(--phase)' : blocked ? 'var(--warn)' : (on ? 'var(--live)' : 'var(--ink)');
+  const boxed = link.kind === 'protective' && isBreaker(link.name);
   if (link.kind === 'protective') parts.push(`<g data-in="${link.name}" style="cursor:pointer">`);
+  if (boxed) {
+    parts.push(`<rect x="${lines[0] - 8}" y="${midY - 13}" width="${lines[2] - lines[0] + 16}" height="26" rx="2" fill="none" stroke="${col}" stroke-width="1.3" stroke-dasharray="2,2"/>`);
+  }
   lines.forEach(lx => {
     parts.push(`<line x1="${lx}" y1="${midY - 8}" x2="${lx}" y2="${midY - 3}" stroke="${col}" stroke-width="2.4"/>`);
     if (on) {
@@ -373,7 +436,6 @@ function drawPower(prog, st) {
     if (d === 1) {
       ['L1', 'L2', 'L3'].forEach((lbl, k) => parts.push(`<text x="${x0 + k * 22}" y="${y - 8}" text-anchor="middle" font-family="var(--mono)" font-size="9" font-weight="700" fill="var(--phase)">${lbl}</text>`));
     }
-    // bus horizontal de entrada compartido, si más de un dispositivo arranca en esta fila
     if (row.length > 1) {
       const xs = row.map((l, i) => x0 + i * colWidth);
       [0, 1, 2].forEach(ph => {
@@ -383,14 +445,13 @@ function drawPower(prog, st) {
     row.forEach((link, i) => {
       const x = x0 + i * colWidth;
       [0, 1, 2].forEach(ph => parts.push(`<line x1="${x + ph * 22}" y1="${y}" x2="${x + ph * 22}" y2="${y + 15}" stroke="var(--live)" stroke-width="2"/>`));
-      const res = drawPowerDevice(link, st, net, x, y + 15, parts);
+      drawPowerDevice(link, st, net, x, y + 15, parts);
       linkX[link.name] = x;
       maxW = Math.max(maxW, x + 2 * 22 + 90);
     });
     y += rowH;
   }
 
-  // motores: cada uno debajo del último dispositivo que le alimenta
   prog.motors.forEach(motor => {
     const feeders = prog.powerLinks.filter(l => l.mapping.some(([, dst]) => motor.terminals.includes(dst)));
     const x = feeders.length ? (linkX[feeders[feeders.length - 1].name] ?? x0) : x0;
@@ -399,12 +460,18 @@ function drawPower(prog, st) {
     lines.forEach(lx => parts.push(`<line x1="${lx}" y1="${y}" x2="${lx}" y2="${y + 28}" stroke="${r.energized ? 'var(--live)' : 'var(--ink)'}" stroke-width="2"/>`));
     const mcx = lines[1], mcy = y + 28 + 22;
     const mcol = r.shorted ? 'var(--phase)' : (r.energized ? 'var(--live)' : 'var(--ink)');
+    const isLoadKind = motor.kind === 'load';
     parts.push(`<circle data-coil="${motor.name}" cx="${mcx}" cy="${mcy}" r="20" fill="${r.energized ? 'var(--live-soft)' : 'none'}" stroke="${mcol}" stroke-width="2.4"/>`);
-    parts.push(`<text x="${mcx}" y="${mcy - 2}" text-anchor="middle" font-family="var(--mono)" font-size="13" font-weight="700" fill="${mcol}">M</text>`);
-    parts.push(`<text x="${mcx}" y="${mcy + 10}" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="${mcol}">3~</text>`);
+    if (isLoadKind) {
+      parts.push(`<line x1="${mcx - 9}" y1="${mcy - 9}" x2="${mcx + 9}" y2="${mcy + 9}" stroke="${mcol}" stroke-width="1.6"/>`);
+      parts.push(`<line x1="${mcx + 9}" y1="${mcy - 9}" x2="${mcx - 9}" y2="${mcy + 9}" stroke="${mcol}" stroke-width="1.6"/>`);
+    } else {
+      parts.push(`<text x="${mcx}" y="${mcy - 2}" text-anchor="middle" font-family="var(--mono)" font-size="13" font-weight="700" fill="${mcol}">M</text>`);
+      parts.push(`<text x="${mcx}" y="${mcy + 10}" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="${mcol}">3~</text>`);
+    }
     parts.push(`<text x="${mcx}" y="${mcy + 36}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">${motor.name}</text>`);
     if (r.shorted) parts.push(`<text x="${mcx}" y="${mcy + 48}" text-anchor="middle" font-family="var(--mono)" font-size="8" font-weight="700" fill="var(--phase)">⚡ CORTOCIRCUITO</text>`);
-    else if (r.energized) parts.push(`<text x="${mcx + 30}" y="${mcy + 6}" text-anchor="middle" font-size="17" fill="${mcol}">${r.rotation === 'ccw' ? '↺' : '↻'}</text>`);
+    else if (r.energized && !isLoadKind) parts.push(`<text x="${mcx + 30}" y="${mcy + 6}" text-anchor="middle" font-size="17" fill="${mcol}">${r.rotation === 'ccw' ? '↺' : '↻'}</text>`);
     maxW = Math.max(maxW, mcx + 90);
     y = mcy + 60;
   });
@@ -412,12 +479,19 @@ function drawPower(prog, st) {
   return { svg: parts.join(''), height: y };
 }
 
+/**
+ * Dibuja el esquema completo (potencia + campo/LOGO! + escalera) dentro
+ * de `svgEl`. `onToggleInput(name)` / `onPressStart(name)` / `onPressEnd(name)`
+ * son los callbacks que app.js usa para reaccionar a los clics sobre los
+ * símbolos de entrada dibujados en el propio diagrama.
+ */
 export function drawAll(svgEl, program, states, counts, { onToggleInput, onPressStart, onPressEnd }) {
   if (!program) { svgEl.innerHTML = ''; return; }
   const parts = [];
   const ladderX = 720;
   let y = 48;
   const rail = 28;
+  const ctx = { poleMap: new Map(), contactLog: [], wireNum: { n: 1 } };
 
   const rows = [];
   program.latches.forEach(l => rows.push({ label: l.name, ast: l.setAst, on: !!states[l.name], tag: 'SR' }));
@@ -430,7 +504,7 @@ export function drawAll(svgEl, program, states, counts, { onToggleInput, onPress
     const tag = t.kind === 'flash'
       ? 'FLASH ' + (counts[t.name] || 0) + '/' + (states[t.name] ? t.presetOn : t.presetOff)
       : (t.kind === 'off' ? 'TOF ' : t.kind === 'pulse' ? 'TP ' : 'TON ') + (counts[t.name] || 0) + '/' + t.preset;
-    rows.push({ label: t.name, ast: t.inAst, on: !!states[t.name], tag });
+    rows.push({ label: t.name, ast: t.inAst, on: !!states[t.name], tag, timer: true });
   });
   program.counters.forEach(c => {
     const tag = (c.kind === 'ctd' ? 'CTD ' : 'CTU ') + (counts[c.name] || 0) + '/' + c.preset;
@@ -438,47 +512,52 @@ export function drawAll(svgEl, program, states, counts, { onToggleInput, onPress
   });
   program.impulses.forEach(imp => rows.push({ label: imp.name, ast: imp.ast, on: !!states[imp.name], tag: 'IMP' }));
 
+  // PASE 1: redes de contacto — rellena ctx.contactLog con dónde aparece
+  // cada referencia, que hace falta conocer ANTES de poder dibujar la
+  // tabla de referencias cruzadas de cada bobina (una bobina puede
+  // aparecer como contacto en una fila posterior a la suya).
   let maxW = 0;
-  const poleMap = new Map(); // numeración de bornes por referencia, para todo el esquema
+  const rowMeta = [];
   rows.forEach((row, idx) => {
     const lay = layout(row.ast);
-    const rowH = Math.max(lay.h, CH) + 30;
+    const rowH = Math.max(lay.h, CH) + 30 + 34; // +34: hueco para la tabla de referencias
     const midY = y + rowH / 2;
     const ox = ladderX + rail;
     parts.push(`<line x1="${ox}" y1="${y}" x2="${ox}" y2="${y + rowH}" stroke="var(--ink)" stroke-width="2.5"/>`);
     parts.push(`<text x="${ox - 12}" y="${midY + 3}" text-anchor="end" font-family="var(--mono)" font-size="10" fill="var(--muted)">${idx + 1}</text>`);
-    drawExpr(lay, ox, y + (rowH - lay.h) / 2, states, parts, poleMap);
-    const coilX = ox + lay.w + 34;
+    drawExpr(lay, ox, y + (rowH - lay.h) / 2 - 17, states, parts, ctx);
+    const coilX = ox + lay.w + 55;
     parts.push(wire(ox + lay.w, midY, coilX - 16, midY, row.on));
-    const col = row.on ? 'var(--live)' : 'var(--ink)';
-    // data-coil identifica el símbolo exacto de esta fila (círculo o caja
-    // S/R) para que la interfaz o las pruebas puedan localizarlo sin
-    // ambigüedad — el mismo nombre puede aparecer también como referencia
-    // de contacto en otra fila, o en el resumen de activos del LOGO!.
-    if (row.box) {
-      // símbolo IEC de bobina SET/RESET: cuadrado con la letra, no círculo
-      parts.push(`<rect data-coil="${row.label}" data-kind="${row.box}" x="${coilX - 14}" y="${midY - 14}" width="28" height="28" rx="3" fill="${row.on ? 'var(--live-soft)' : 'none'}" stroke="${col}" stroke-width="2.1"/>`);
-      parts.push(`<text x="${coilX}" y="${midY + 5}" text-anchor="middle" font-family="var(--mono)" font-size="13" font-weight="700" fill="${col}">${row.box}</text>`);
-    } else {
-      parts.push(`<circle data-coil="${row.label}" cx="${coilX}" cy="${midY}" r="15" fill="${row.on ? 'var(--live-soft)' : 'none'}" stroke="${col}" stroke-width="2.1"/>`);
-    }
-    parts.push(`<text x="${coilX}" y="${y + 13}" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--ink)">${row.label}</text>`);
-    if (row.tag) parts.push(`<text x="${coilX}" y="${midY + 4}" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="var(--muted)">${row.tag}</text>`);
-    if (!row.box) {
-      // bornas reales de la bobina de un contactor/relé: A1 (entrada), A2 (retorno)
-      parts.push(`<text x="${coilX - 15}" y="${midY + 25}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">A1</text>`);
-      parts.push(`<text x="${coilX + 15}" y="${midY + 25}" text-anchor="middle" font-family="var(--mono)" font-size="7" fill="var(--muted)">A2</text>`);
-    }
-    parts.push(`<line x1="${coilX + 16}" y1="${y}" x2="${coilX + 16}" y2="${y + rowH}" stroke="var(--ink)" stroke-width="2.5"/>`);
-    maxW = Math.max(maxW, coilX + 40);
+    rowMeta.push({ row, coilX, y, midY, rowH });
+    maxW = Math.max(maxW, coilX + 90);
     y += rowH;
+  });
+
+  // PASE 2: bobinas/lámparas + tabla de referencias cruzadas (ya con el
+  // registro completo de dónde aparece cada contacto)
+  rowMeta.forEach(({ row, coilX, y: rowY, midY, rowH }) => {
+    drawCoilSymbol(coilX, rowY, midY, row.label, row.on, {
+      box: row.box, lamp: isLamp(row.label), timer: !!row.timer, tag: row.tag,
+    }, parts);
+    parts.push(`<line x1="${coilX + 16}" y1="${rowY}" x2="${coilX + 16}" y2="${rowY + rowH}" stroke="var(--ink)" stroke-width="2.5"/>`);
+    const refs = ctx.contactLog.filter(e => e.ref === row.label);
+    if (refs.length) {
+      const shown = refs.slice(0, 3);
+      shown.forEach((e, i) => {
+        parts.push(`<text x="${coilX}" y="${midY + 38 + i * 9}" text-anchor="middle" font-family="var(--mono)" font-size="6.5" fill="var(--muted)">${e.pair} → ${gridCoordAt(e.x, e.y)}</text>`);
+      });
+      if (refs.length > shown.length) {
+        parts.push(`<text x="${coilX}" y="${midY + 38 + shown.length * 9}" text-anchor="middle" font-family="var(--mono)" font-size="6.5" fill="var(--muted)">+${refs.length - shown.length} más</text>`);
+      }
+    }
   });
 
   const field = drawField(program, states);
   const power = drawPower(program, states);
   const offsetY = power.height;
-  const totalH = Math.max(y + 40, field.h + 20, 520) + offsetY;
-  const totalW = Math.max(maxW + 20, 1180);
+  const innerH = Math.max(y + 40, field.h + 20, 520) + offsetY;
+  const innerW = Math.max(maxW + 20, 1180);
+  const totalW = innerW + MARGIN_L, totalH = innerH + MARGIN_T;
   const bg = `
     <defs>
       <pattern id="g" width="16" height="16" patternUnits="userSpaceOnUse">
@@ -486,15 +565,20 @@ export function drawAll(svgEl, program, states, counts, { onToggleInput, onPress
       </pattern>
     </defs>
     <rect width="${totalW}" height="${totalH}" fill="url(#g)"/>
-    <text x="36" y="${26 + offsetY}" font-family="var(--mono)" font-size="10" fill="var(--muted)" letter-spacing="0.04em">CABLEADO · LOGO!</text>
-    <text x="${ladderX + rail}" y="${26 + offsetY}" font-family="var(--mono)" font-size="10" fill="var(--muted)" letter-spacing="0.04em">KOP / ESCALERA</text>
-    <text x="${ladderX + rail}" y="${42 + offsetY}" text-anchor="middle" font-family="var(--mono)" font-size="11" font-weight="600" fill="var(--ink)">L+</text>
+    ${drawGridOverlay(totalW, totalH)}
+    <text x="${36 + MARGIN_L}" y="${26 + offsetY + MARGIN_T}" font-family="var(--mono)" font-size="10" fill="var(--muted)" letter-spacing="0.04em">CABLEADO · LOGO!</text>
+    <text x="${ladderX + rail + MARGIN_L}" y="${26 + offsetY + MARGIN_T}" font-family="var(--mono)" font-size="10" fill="var(--muted)" letter-spacing="0.04em">KOP / ESCALERA</text>
+    <text x="${ladderX + rail + MARGIN_L}" y="${42 + offsetY + MARGIN_T}" text-anchor="middle" font-family="var(--mono)" font-size="11" font-weight="600" fill="var(--ink)">L+</text>
   `;
 
   svgEl.setAttribute('viewBox', `0 0 ${totalW} ${totalH}`);
   svgEl.setAttribute('width', totalW);
   svgEl.setAttribute('height', totalH);
-  svgEl.innerHTML = bg + power.svg + `<g transform="translate(0, ${offsetY})">` + field.svg + parts.join('') + `</g>`;
+  svgEl.innerHTML = bg
+    + `<g transform="translate(${MARGIN_L}, ${MARGIN_T})">`
+    + power.svg
+    + `<g transform="translate(0, ${offsetY})">` + field.svg + parts.join('') + `</g>`
+    + `</g>`;
 
   svgEl.querySelectorAll('[data-in]').forEach(el => {
     const name = el.getAttribute('data-in');

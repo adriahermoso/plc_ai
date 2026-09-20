@@ -55,7 +55,11 @@
         <option value="latch">Arranque / paro simple</option>
         <option value="seq">Secuencia A/B/C</option>
         <option value="selector">Selector Manual/Paro/Automático</option>
-        <option value="protections">Telerruptor + símbolos de protección</option>
+        <option value="ground">Carga monofásica + fuga a tierra</option>
+      <option value="dol">Arranque directo trifásico (Grupo 2)</option>
+      <option value="reversing">Inversor de giro con interbloqueo real</option>
+      <option value="stardelta">Arranque estrella-triángulo</option>
+      <option value="protections">Telerruptor + símbolos de protección</option>
       <option value="advanced">SET/RESET + flanco + contador + intermitente</option>
       </select>
       <span class="hint" id="exampleDesc"></span>
@@ -79,6 +83,11 @@ RESET KM1 = SB2</code></div>
         <div class="help-item"><dt>SELECTOR</dt><dd>2 a 4 posiciones; crea NOMBRE_POSICION, solo una activa.</dd><code>SELECTOR SW1 = MANUAL, PARO, AUTO</code></div>
         <div class="help-item"><dt>IMPULSE</dt><dd>Telerruptor: cada flanco conmuta el estado.</dd><code>IMPULSE LB1 = SB1</code></div>
         <div class="help-item"><dt>Prefijos FT/QM/FU/QS/DIF</dt><dd>Iconos de térmico/magnetotérmico/fusible/seccionador/diferencial (solo visual).</dd></div>
+        <div class="help-item"><dt>POWERCHAIN</dt><dd>Circuito de potencia hasta un motor. Protección sana = conduce; contactor energizado = conduce. Si salta una protección, todo se congela hasta resetearla.</dd><code>POWERCHAIN P1 = QM1 -> KM1 -> MOTOR M1</code></div>
+        <div class="help-item"><dt>LINK / MOTOR</dt><dd>Como POWERCHAIN pero con ramas (cruces de fase, conexiones en estrella...).</dd><code>LINK KM2 = a,b,c -> V1,U1,W1</code></div>
+        <div class="help-item"><dt>INTERLOCK</dt><dd>Interbloqueo mecánico: solo el primer contactor de la lista cierra de verdad si piden los dos a la vez.</dd><code>INTERLOCK KM1, KM2</code></div>
+        <div class="help-item"><dt>PLC / EXPANSION</dt><dd>Modelo de autómata a dibujar (LOGO!/S7-1200) y módulos de expansión.</dd><code>PLC S71200</code></div>
+        <div class="help-item"><dt>LOAD / N / PE</dt><dd>LOAD = MOTOR para cualquier carga (monofásica incluida). N/PE siempre disponibles; fase+PE en un nodo = fuga a tierra real.</dd><code>LOAD EL1 = b,N</code></div>
       </dl>
     </details>
   </div>

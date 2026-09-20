@@ -38,6 +38,10 @@
       <option value="latch">Arranque / paro simple</option>
       <option value="seq">Secuencia A/B/C</option>
       <option value="selector">Selector Manual/Paro/Automático</option>
+      <option value="ground">Carga monofásica + fuga a tierra</option>
+      <option value="dol">Arranque directo trifásico (Grupo 2)</option>
+      <option value="reversing">Inversor de giro con interbloqueo real</option>
+      <option value="stardelta">Arranque estrella-triángulo</option>
       <option value="protections">Telerruptor + símbolos de protección</option>
       <option value="advanced">SET/RESET + flanco + contador + intermitente</option>
     </select>
@@ -71,6 +75,14 @@ COUNTER C2 = CTD(SB1, RESET(SA1), 3)</code></div>
 COIL M1 = SW1_MANUAL</code></div>
   <div class="help-item"><dt>IMPULSE</dt><dd>Telerruptor: cada flanco de subida de la entrada conmuta el estado (pulso 1 enciende, pulso 2 apaga...), a diferencia de SET/RESET.</dd><code>IMPULSE LB1 = SB1</code></div>
   <div class="help-item"><dt>Prefijos de dispositivo</dt><dd>Cambian solo el icono en el esquema de campo, no la simulación: FT=térmico, QM=magnetotérmico, FU=fusible, QS=seccionador, DIF/RCD=diferencial.</dd></div>
+  <div class="help-item"><dt>POWERCHAIN</dt><dd>Circuito de potencia en serie hasta un motor. Cada protección conduce cuando está sana (entrada=false); un contactor conduce cuando su bobina está energizada. Si una protección se dispara, la simulación se congela hasta que la reseteas (vuelve a pulsarla).</dd><code>POWERCHAIN P1 = QM1 -> KM1 -> FT1 -> MOTOR M1</code></div>
+  <div class="help-item"><dt>LINK / MOTOR</dt><dd>Igual que POWERCHAIN pero con ramas: cada LINK une N nodos de origen con N de destino (pueden cruzarse, para invertir el giro, o repetirse, para conexiones en estrella). MOTOR declara los terminales finales.</dd><code>LINK KM2 = a,b,c -> V1,U1,W1
+MOTOR M1 = U1,V1,W1</code></div>
+  <div class="help-item"><dt>INTERLOCK</dt><dd>Interbloqueo mecánico real entre contactores: si dos reciben orden de cerrar a la vez, solo el primero de la lista cierra de verdad. Sin él, el simulador detecta el cortocircuito y dispara la protección aguas arriba sola.</dd><code>INTERLOCK KM1, KM2</code></div>
+  <div class="help-item"><dt>PLC / EXPANSION</dt><dd>Elige el modelo de autómata a dibujar (solo visual: LOGO! o S7-1200) y añade módulos de expansión informativos.</dd><code>PLC S71200
+EXPANSION EM1</code></div>
+  <div class="help-item"><dt>LOAD / N / PE</dt><dd>LOAD es como MOTOR pero para cualquier carga (p. ej. monofásica L-N). N y PE están siempre disponibles como L1/L2/L3; un nodo alimentado a la vez por una fase y por PE es una fuga a tierra real, detectada igual que un cortocircuito.</dd><code>LINK QM1 = L1,L2,L3 -> a,b,c
+LOAD EL1 = b,N</code></div>
   <div class="help-item"><dt># comentario</dt><dd>Cualquier línea que empiece por "#" se ignora.</dd></div>
 </dl>
 

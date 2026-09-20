@@ -1,0 +1,12 @@
+{
+  "name": "plc_ai",
+  "private": true,
+  "type": "module",
+  "description": "relaysim — simulador de relés/contactores y automatismo programable (no requiere build; GitHub Pages sirve los archivos tal cual).",
+  "scripts": {
+    "test": "node test/core.test.mjs && node test/app.dom.test.mjs && node test/pan.test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  }
+}

@@ -1,4 +1,4 @@
-import { tokenize, parseExpr, parseProgram, evalAst, settle, commitEdgeMemory, isMom, isEStop, isThermal, isBreaker, isFuse, isDisconnect, isRCD, blankState, setSelectorPosition, nextSelectorPosition } from '../js/core.js';
+import { tokenize, parseExpr, parseProgram, evalAst, settle, commitEdgeMemory, isMom, isEStop, isThermal, isBreaker, isFuse, isDisconnect, isRCD, blankState, setSelectorPosition, nextSelectorPosition, computePowerNetwork } from '../js/core.js';
 
 let pass = 0, fail = 0;
 function ok(desc, cond) { if (cond) { pass++; console.log('OK   ', desc); } else { fail++; console.log('FALLO', desc); } }
@@ -185,6 +185,132 @@ ok('isDisconnect("QS1")', isDisconnect('QS1') === true);
 ok('isRCD("DIF1") y isRCD("RCD1")', isRCD('DIF1') === true && isRCD('RCD1') === true);
 ok('un nombre normal no activa ninguna convención de dispositivo',
    !isThermal('SA1') && !isBreaker('SA1') && !isFuse('SA1') && !isDisconnect('SA1') && !isRCD('SA1'));
+
+/* ── POWERCHAIN (desazucarado sobre LINK+MOTOR): camino de potencia lineal ── */
+{
+  const prog = parseProgram(`INPUT SB1 SB2 QM1 FT1
+LATCH KM1 = SET(SB1) RESET(SB2)
+POWERCHAIN P1 = QM1 -> KM1 -> FT1 -> MOTOR M1`);
+  ok('POWERCHAIN se desazucariza en 3 LINK y 1 MOTOR',
+     prog.powerLinks.length === 3 && prog.motors.length === 1 && prog.motors[0].name === 'M1');
+  ok('QM1/FT1 se resuelven como protección, KM1 como contactor',
+     prog.powerLinks[0].kind === 'protective' &&
+     prog.powerLinks[1].kind === 'contactor' &&
+     prog.powerLinks[2].kind === 'protective');
+  const st = blankState(prog);
+  ok('M1 (motor) empieza a false', st.M1 === false);
+}
+throws('POWERCHAIN sin "MOTOR" al final da error',
+  () => parseProgram(`INPUT QM1\nPOWERCHAIN P1 = QM1 -> QM1`));
+throws('POWERCHAIN con una entrada sin prefijo de protección reconocido da error',
+  () => parseProgram(`INPUT SA1\nPOWERCHAIN P1 = SA1 -> MOTOR M1`));
+throws('POWERCHAIN con un nombre no declarado da error',
+  () => parseProgram(`POWERCHAIN P1 = KM1 -> MOTOR M1`));
+throws('dos POWERCHAIN no pueden compartir nombre de motor',
+  () => parseProgram(`INPUT QM1 QM2\nPOWERCHAIN P1 = QM1 -> MOTOR M1\nPOWERCHAIN P2 = QM2 -> MOTOR M1`));
+
+/* ── LINK/MOTOR/INTERLOCK: inversor de giro con interbloqueo real ── */
+{
+  const prog = parseProgram(`INPUT SB1 SB2 QM1
+LATCH KM1 = SET(SB1) RESET(SB2)
+LATCH KM2 = SET(SB2) RESET(SB1)
+LINK QM1 = L1,L2,L3 -> a,b,c
+LINK KM1 = a,b,c -> U1,V1,W1
+LINK KM2 = a,b,c -> V1,U1,W1
+MOTOR M1 = U1,V1,W1
+INTERLOCK KM1, KM2`);
+  ok('LINK/MOTOR/INTERLOCK parsean bien', prog.powerLinks.length === 3 && prog.interlocks.length === 1);
+
+  // KM1 solo (marcha adelante): motor energizado, sentido horario
+  let st = blankState(prog);
+  st.SB1 = true; settle(prog, st);
+  let net = computePowerNetwork(prog, st);
+  ok('con KM1 cerrado, el motor queda energizado en sentido horario',
+     net.motorResults.M1.energized && net.motorResults.M1.rotation === 'cw');
+
+  // KM2 solo (marcha atrás, fases cruzadas): sentido antihorario
+  st = blankState(prog);
+  st.SB2 = true; settle(prog, st);
+  net = computePowerNetwork(prog, st);
+  ok('con KM2 cerrado (fases cruzadas), el sentido es antihorario',
+     net.motorResults.M1.energized && net.motorResults.M1.rotation === 'ccw');
+
+  // los dos a la vez (forzando el estado, sin pasar por el control):
+  // el interbloqueo bloquea mecánicamente el segundo — sigue sin haber corto
+  st = blankState(prog);
+  st.KM1 = true; st.KM2 = true;
+  net = computePowerNetwork(prog, st);
+  ok('con el interbloqueo puesto, el segundo contactor queda mecánicamente bloqueado',
+     net.mechBlocked.has('KM2') && !net.mechBlocked.has('KM1'));
+  ok('gracias al interbloqueo, NO hay cortocircuito aunque ambas bobinas estén activas',
+     net.shortedNodes.length === 0);
+}
+{
+  // el mismo circuito pero SIN interbloqueo: forzando ambos contactores,
+  // el motor detecta un cortocircuito de verdad en V1 y dispara QM1
+  const prog = parseProgram(`INPUT QM1 X
+COIL KM1 = X
+COIL KM2 = X
+LINK QM1 = L1,L2,L3 -> a,b,c
+LINK KM1 = a,b,c -> U1,V1,W1
+LINK KM2 = a,b,c -> V1,U1,W1
+MOTOR M1 = U1,V1,W1`);
+  const st = blankState(prog);
+  st.KM1 = true; st.KM2 = true; // forzado, como si el control tuviera un fallo de diseño
+  const net = computePowerNetwork(prog, st);
+  ok('sin interbloqueo, forzar ambos contactores produce un cortocircuito real',
+     net.shortedNodes.includes('V1'));
+  ok('el cortocircuito identifica QM1 como la protección a disparar',
+     net.toTrip.has('QM1'));
+  ok('el motor NO queda energizado con un cortocircuito en uno de sus terminales',
+     net.motorResults.M1.energized === false);
+}
+throws('INTERLOCK con un nombre no declarado da error',
+  () => parseProgram(`INPUT QM1\nLINK QM1 = L1,L2,L3 -> U1,V1,W1\nMOTOR M1 = U1,V1,W1\nINTERLOCK QM1, KMX`));
+throws('INTERLOCK sobre una protección (no un contactor) da error',
+  () => parseProgram(`INPUT QM1 QM2\nLINK QM1 = L1,L2,L3 -> U1,V1,W1\nMOTOR M1 = U1,V1,W1\nINTERLOCK QM1, QM2`));
+
+/* ── PLC (tipo de autómata) / EXPANSION: solo metadatos visuales ── */
+{
+  const prog = parseProgram(`INPUT SA1\nCOIL M1 = SA1`);
+  ok('sin declarar PLC, por defecto es "logo"', prog.plcType === 'logo');
+}
+{
+  const prog = parseProgram(`PLC S71200\nEXPANSION EM1\nEXPANSION EM2\nINPUT SA1\nCOIL M1 = SA1`);
+  ok('PLC S71200 se reconoce', prog.plcType === 's71200');
+  ok('EXPANSION añade módulos en orden', prog.expansions.length === 2 && prog.expansions[0] === 'EM1');
+}
+throws('PLC con un modelo no reconocido da error', () => parseProgram(`PLC ARDUINO\nINPUT SA1\nCOIL M1 = SA1`));
+
+/* ── N (neutro) y PE (tierra): cargas monofásicas y fuga a tierra real ── */
+{
+  const prog = parseProgram(`INPUT QM1
+LINK QM1 = L1,N -> a,b
+LOAD EL1 = a,b`);
+  ok('LOAD parsea con kind="load"', prog.motors[0].kind === 'load');
+  const st = blankState(prog);
+  const net = computePowerNetwork(prog, st);
+  ok('carga monofásica L-N queda energizada sin necesitar 3 fases', net.motorResults.EL1.energized === true);
+}
+{
+  // fuga a tierra real: una fase toca PE directamente (aislamiento dañado,
+  // simulado como un LINK explícito) -> debe detectarse igual que un
+  // cortocircuito entre fases, y aparecer en groundFaultNodes
+  const prog = parseProgram(`INPUT QM1 X
+COIL KFUGA = X
+LINK QM1 = L1,L2,L3 -> a,b,c
+LINK KFUGA = PE -> b
+LOAD EL1 = b,c`);
+  const st = blankState(prog);
+  st.KFUGA = true; // simula el fallo de aislamiento
+  const net = computePowerNetwork(prog, st);
+  ok('fuga a tierra: el nodo en conflicto aparece en groundFaultNodes',
+     net.groundFaultNodes.includes('b'));
+  ok('fuga a tierra: también cuenta como shortedNodes (mismo mecanismo)',
+     net.shortedNodes.includes('b'));
+}
+throws('LOAD con nombre repetido de MOTOR da error',
+  () => parseProgram(`LINK QM1 = L1,N -> a,b\nMOTOR M1 = a,b\nLOAD M1 = a,b`));
 
 console.log(`\n${pass} OK, ${fail} FALLOS`);
 process.exit(fail ? 1 : 0);

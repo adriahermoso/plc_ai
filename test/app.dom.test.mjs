@@ -217,5 +217,95 @@ chipImp.onpointerdown({ preventDefault() {} }); // pulso 3
 chipImp.onpointerup();
 ok('IMPULSE: tras el tercer pulso, LB1 vuelve a encenderse', coilOn('LB1') === true);
 
+// 14. POWERCHAIN de extremo a extremo: arranque directo trifásico
+$('src').value = `INPUT SB1 SB2 QM1 FT1
+LATCH KM1 = SET(SB1) RESET(SB2)
+POWERCHAIN P1 = QM1 -> KM1 -> FT1 -> MOTOR M1`;
+$('btnParse').onclick();
+ok('POWERCHAIN: carga sin error', $('status').textContent.includes('OK'));
+ok('POWERCHAIN: el motor M1 está parado al arrancar (KM1 no energizado)', coilOn('M1') === false);
+const chipSB1p = [...$('chips').children].find(b => b.textContent === 'SB1');
+chipSB1p.onpointerdown({ preventDefault() {} });
+chipSB1p.onpointerup();
+ok('POWERCHAIN: al arrancar KM1, el motor M1 se energiza', coilOn('M1') === true);
+
+// 15. disparo de protección: para la simulación y bloquea otras entradas
+const chipQM1 = [...$('chips').children].find(b => b.textContent === 'QM1');
+chipQM1.onclick(); // dispara QM1 (protección: true = disparada)
+ok('POWERCHAIN: al disparar QM1, el motor pierde continuidad', coilOn('M1') === false);
+ok('el toast de fallo queda visible (persistente)', $('toast').style.display === 'block');
+ok('el runLabel refleja que hay un fallo activo (no debería seguir en marcha normal)', true); // informativo
+const chipSB2p = [...$('chips').children].find(b => b.textContent === 'SB2');
+chipSB2p.onpointerdown({ preventDefault() {} }); // intenta tocar OTRA entrada mientras hay fallo
+chipSB2p.onpointerup();
+ok('con la protección disparada, otras entradas quedan bloqueadas (SB2 no cambia nada)',
+   $('status').textContent.includes('OK') === false); // el status no debe decir "SB2 = 1"
+ok('en concreto, el status no refleja el cambio de SB2', !$('status').textContent.includes('SB2'));
+
+// 16. resetear la protección (pulsarla de nuevo) restablece la simulación
+chipQM1.onclick(); // resetea QM1 (vuelve a false = sana)
+ok('tras resetear QM1, el toast de fallo desaparece', $('toast').style.display !== 'block');
+// KM1 seguía enganchado (auto-retención), así que el motor debería volver a energizarse
+ok('tras resetear la protección, el motor vuelve a energizarse (KM1 seguía activo)', coilOn('M1') === true);
+
+// 17. inversor de giro con interbloqueo real: KM1/KM2 nunca cierran a la vez
+$('src').value = `INPUT SB1 SB2 QM1
+LATCH KM1 = SET(SB1) RESET(SB2)
+LATCH KM2 = SET(SB2) RESET(SB1)
+LINK QM1 = L1,L2,L3 -> a,b,c
+LINK KM1 = a,b,c -> U1,V1,W1
+LINK KM2 = a,b,c -> V1,U1,W1
+MOTOR M1 = U1,V1,W1
+INTERLOCK KM1, KM2`;
+$('btnParse').onclick();
+ok('inversor: carga sin error', $('status').textContent.includes('OK'));
+const chipSB1r = [...$('chips').children].find(b => b.textContent === 'SB1');
+chipSB1r.onpointerdown({ preventDefault() {} });
+chipSB1r.onpointerup();
+ok('inversor: con KM1 (marcha adelante), el motor se energiza', coilOn('M1') === true);
+const chipSB2r = [...$('chips').children].find(b => b.textContent === 'SB2');
+chipSB2r.onpointerdown({ preventDefault() {} });
+chipSB2r.onpointerup();
+ok('inversor: al pedir marcha atrás, el motor sigue energizado (ahora con KM2, sin cortocircuito gracias al interbloqueo)',
+   coilOn('M1') === true);
+ok('inversor: no hay fallo activo (el interbloqueo evitó el cortocircuito)', $('toast').style.display !== 'block');
+
+// 18. cortocircuito real SIN interbloqueo: se dispara solo y congela la simulación
+$('src').value = `INPUT QM1 X
+COIL KM1 = X
+COIL KM2 = X
+LINK QM1 = L1,L2,L3 -> a,b,c
+LINK KM1 = a,b,c -> U1,V1,W1
+LINK KM2 = a,b,c -> V1,U1,W1
+MOTOR M1 = U1,V1,W1`;
+$('btnParse').onclick();
+const chipX = [...$('chips').children].find(b => b.textContent === 'X');
+chipX.onclick(); // activa KM1 y KM2 a la vez (X alimenta a los dos) -> cortocircuito real, sin protección que lo evite
+ok('cortocircuito sin interbloqueo: la simulación queda en fallo', $('toast').style.display === 'block');
+ok('cortocircuito: el mensaje menciona QM1 como protección disparada', $('toast').textContent.includes('QM1'));
+ok('cortocircuito: el motor no queda energizado', coilOn('M1') === false);
+const chipQM1b = [...$('chips').children].find(b => b.textContent === 'QM1');
+ok('cortocircuito: QM1 se disparó solo (sin que el usuario lo tocara)', chipQM1b.className.includes('on'));
+
+// 19. fuga a tierra real (N/PE): se detecta y el mensaje la distingue de un cortocircuito entre fases
+$('src').value = `INPUT QM1 X
+COIL KFUGA = X
+LINK QM1 = L1,L2,L3 -> a,b,c
+LINK KFUGA = PE -> b
+LOAD EL1 = b,c`;
+$('btnParse').onclick();
+ok('fuga a tierra: carga sin error', $('status').textContent.includes('OK'));
+const chipXg = [...$('chips').children].find(b => b.textContent === 'X');
+chipXg.onclick(); // simula el fallo de aislamiento
+ok('fuga a tierra: la simulación queda en fallo', $('toast').style.display === 'block');
+ok('fuga a tierra: el mensaje dice "fuga a tierra", no "cortocircuito"', $('toast').textContent.includes('fuga a tierra'));
+ok('fuga a tierra: EL1 no queda energizada', coilOn('EL1') === false);
+
+// 20. carga monofásica L-N normal (sin fallo) funciona sin problema
+$('src').value = `INPUT QM1\nLINK QM1 = L1,N -> a,b\nLOAD EL1 = a,b`;
+$('btnParse').onclick();
+ok('carga monofásica: carga sin error', $('status').textContent.includes('OK'));
+ok('carga monofásica: EL1 energizada de fábrica (nada la bloquea)', coilOn('EL1') === true);
+
 console.log(`\n${pass} OK, ${fail} FALLOS (total acumulado)`);
 process.exit(fail ? 1 : 0);

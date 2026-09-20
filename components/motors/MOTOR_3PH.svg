@@ -1,1 +1,5 @@
-
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" width="50" height="50">
+  <circle cx="25" cy="25" r="18" fill="none" stroke="currentColor" stroke-width="2.3"/>
+  <text x="25" y="23" text-anchor="middle" font-family="monospace" font-size="14" font-weight="700" fill="currentColor">M</text>
+  <text x="25" y="35" text-anchor="middle" font-family="monospace" font-size="8" fill="currentColor">3~</text>
+</svg>

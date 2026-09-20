@@ -12,7 +12,11 @@ css/
   base.css            tokens compartidos (colores/tipografía) + componentes comunes
   desktop.css          layout exclusivo de index.html
   mobile.css           layout exclusivo de mobile.html
+components/
+  components.json   metadatos de los 25 símbolos
+  contacts/ … logic/  SVG de cada símbolo
 js/
+  components.js       biblioteca embebida + placeSymbol()
   core.js             parser + motor de simulación (sin DOM, reutilizable)
   render.js            generación del SVG (escalera + módulo LOGO!)
   examples.js          los 5 circuitos de ejemplo, con descripción

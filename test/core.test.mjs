@@ -1,4 +1,4 @@
-import { tokenize, parseExpr, parseProgram, evalAst, settle, commitEdgeMemory, isMom, isEStop, isThermal, isBreaker, isFuse, isDisconnect, isRCD, blankState, setSelectorPosition, nextSelectorPosition, computePowerNetwork } from '../js/core.js';
+import { tokenize, parseExpr, parseProgram, evalAst, settle, commitEdgeMemory, isMom, isEStop, isThermal, isBreaker, isFuse, isDisconnect, isRCD, isLamp, blankState, setSelectorPosition, nextSelectorPosition, computePowerNetwork } from '../js/core.js';
 
 let pass = 0, fail = 0;
 function ok(desc, cond) { if (cond) { pass++; console.log('OK   ', desc); } else { fail++; console.log('FALLO', desc); } }
@@ -311,6 +311,15 @@ LOAD EL1 = b,c`);
 }
 throws('LOAD con nombre repetido de MOTOR da error',
   () => parseProgram(`LINK QM1 = L1,N -> a,b\nMOTOR M1 = a,b\nLOAD M1 = a,b`));
+
+/* ── alias de convenciones (FR además de FT, QF además de QM, HL/EL lámpara) ── */
+ok('isThermal reconoce FR además de FT', isThermal('FR1') === true && isThermal('FT1') === true);
+ok('isBreaker reconoce QF además de QM', isBreaker('QF1') === true && isBreaker('QM1') === true);
+ok('isLamp reconoce HL y EL', isLamp('HL1') === true && isLamp('EL1') === true);
+{
+  const prog = parseProgram(`INPUT QF1\nLINK QF1 = L1,L2,L3 -> a,b,c\nMOTOR M1 = a,b,c`);
+  ok('QF1 se resuelve como protección en LINK (igual que QM1)', prog.powerLinks[0].kind === 'protective');
+}
 
 console.log(`\n${pass} OK, ${fail} FALLOS`);
 process.exit(fail ? 1 : 0);

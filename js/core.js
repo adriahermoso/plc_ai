@@ -147,6 +147,13 @@ export function parseProgram(text) {
   const setResets = []; // { name, kind: 'set'|'reset', ast }
   const selectors = []; // { name, positions: [...] }
   const impulses = []; // { name, ast } — telerruptor
+  let plcType = 'logo'; // 'logo' | 's71200' — solo cambia el dibujo del módulo, no la simulación
+  const expansions = []; // nombres de módulos de expansión (solo visual/informativo)
+  const powerLinks = []; // { name, kind, mapping: [[src,dst],...] } — un LINK o un paso desugarizado de POWERCHAIN
+  const motors = []; // { name, terminals: [...] }
+  const motorNames = new Set();
+  const interlocks = []; // [ [dev1,dev2,...], ... ]
+  const protectiveNames = new Set(); // nombres de INPUT usados como protección en algún LINK
   const declared = new Set();  // nombres de COIL/LATCH/TIMER/COUNTER (únicos)
   const srNames = new Set();   // nombres usados en SET/RESET (pueden repetirse)
   const selDerived = new Set(); // nombres derivados NOMBRE_POSICION de cada SELECTOR
@@ -284,12 +291,134 @@ export function parseProgram(text) {
       });
       continue;
     }
+    if (line.startsWith('LINK')) {
+      // un tramo de potencia genérico: N fases de origen -> N fases de
+      // destino (mismo número a cada lado). Permite ramas, cruces de fase
+      // (para inversores de giro) e incluso unir varias puntas en un
+      // mismo nodo (para conexiones en estrella).
+      const m = line.match(/^LINK\s+(\w+)\s*=\s*(.+?)\s*->\s*(.+)$/i);
+      if (!m) throw new Error('LINK: LINK nombre = origen1,origen2,... -> destino1,destino2,...');
+      const linkName = m[1];
+      if (powerLinks.some(l => l.name === linkName)) throw new Error(`"${linkName}" (LINK) ya está definido`);
+      const srcs = m[2].split(',').map(s => s.trim()).filter(Boolean);
+      const dsts = m[3].split(',').map(s => s.trim()).filter(Boolean);
+      if (srcs.length !== dsts.length || srcs.length === 0) {
+        throw new Error(`LINK ${linkName}: el número de nodos de origen y destino debe coincidir`);
+      }
+      [...srcs, ...dsts].forEach(n => { if (!/^\w+$/.test(n)) throw new Error(`LINK ${linkName}: "${n}" no es un nombre de nodo válido`); });
+      powerLinks.push({ name: linkName, kind: null, mapping: srcs.map((s, i) => [s, dsts[i]]) });
+      continue;
+    }
+    if (line.startsWith('MOTOR') || line.startsWith('LOAD')) {
+      // LOAD es exactamente lo mismo que MOTOR (mismos terminales, mismas
+      // reglas de energización) — solo cambia el nombre para dejar claro
+      // que es una carga genérica (p. ej. una lámpara entre L y N), no
+      // necesariamente un motor. No afecta a la simulación.
+      const isLoad = line.startsWith('LOAD');
+      const kw = isLoad ? 'LOAD' : 'MOTOR';
+      const m = line.match(new RegExp(`^${kw}\\s+(\\w+)\\s*=\\s*(.+)$`, 'i'));
+      if (!m) throw new Error(`${kw}: ${kw} nombre = terminal1,terminal2,...`);
+      const motorName = m[1];
+      if (motorNames.has(motorName)) throw new Error(`"${motorName}" (${kw}) ya está definido`);
+      const terms = m[2].split(',').map(s => s.trim()).filter(Boolean);
+      if (!terms.length) throw new Error(`${kw} ${motorName}: hace falta al menos un terminal`);
+      terms.forEach(t => { if (!/^\w+$/.test(t)) throw new Error(`${kw} ${motorName}: "${t}" no es un nombre de nodo válido`); });
+      motorNames.add(motorName);
+      motors.push({ name: motorName, terminals: terms, kind: isLoad ? 'load' : 'motor' });
+      continue;
+    }
+    if (line.startsWith('INTERLOCK')) {
+      // interbloqueo mecánico real: si dos contactores interbloqueados
+      // reciben orden de cerrar a la vez, solo el primero de la lista
+      // llega a cerrar de verdad — el resto queda bloqueado mecánicamente,
+      // aunque su bobina esté energizada.
+      const names = line.slice(9).trim().split(',').map(s => s.trim()).filter(Boolean);
+      if (names.length < 2) throw new Error('INTERLOCK: hacen falta al menos 2 nombres (INTERLOCK KM1, KM2)');
+      interlocks.push(names);
+      continue;
+    }
+    if (line.startsWith('POWERCHAIN')) {
+      // azúcar sintáctico sobre LINK+MOTOR: un camino de potencia lineal,
+      // sin ramas, dispositivo tras dispositivo hasta el motor. Se
+      // desazucariza aquí mismo en LINKs internos con nodos automáticos.
+      const m = line.match(/^POWERCHAIN\s+(\w+)\s*=\s*(.+)$/i);
+      if (!m) throw new Error('POWERCHAIN: POWERCHAIN nombre = DEV1 -> DEV2 -> ... -> MOTOR nombreMotor');
+      const chainName = m[1];
+      const parts = m[2].split('->').map(s => s.trim()).filter(Boolean);
+      if (parts.length < 2) throw new Error(`POWERCHAIN ${chainName}: hace falta al menos un dispositivo y el motor final`);
+      const motorPart = parts[parts.length - 1];
+      const mm = motorPart.match(/^MOTOR\s+(\w+)$/i);
+      if (!mm) throw new Error(`POWERCHAIN ${chainName}: el último elemento debe ser "MOTOR nombre"`);
+      const motorName = mm[1];
+      if (motorNames.has(motorName)) throw new Error(`"${motorName}" (MOTOR) ya está definido`);
+      const devNames = parts.slice(0, -1);
+      devNames.forEach(devName => { if (!/^\w+$/.test(devName)) throw new Error(`POWERCHAIN ${chainName}: "${devName}" no es un nombre válido`); });
+      let prevNodes = ['L1', 'L2', 'L3'];
+      devNames.forEach((devName, i) => {
+        if (powerLinks.some(l => l.name === devName)) throw new Error(`"${devName}" ya está definido como LINK`);
+        const isLast = i === devNames.length - 1;
+        const outNodes = isLast
+          ? [motorName + '_U1', motorName + '_V1', motorName + '_W1']
+          : [`__${chainName}_${i}a`, `__${chainName}_${i}b`, `__${chainName}_${i}c`];
+        powerLinks.push({ name: devName, kind: null, mapping: prevNodes.map((n, j) => [n, outNodes[j]]) });
+        prevNodes = outNodes;
+      });
+      motorNames.add(motorName);
+      motors.push({ name: motorName, terminals: prevNodes });
+      continue;
+    }
+    if (line.startsWith('PLC')) {
+      // elige el modelo de autómata a dibujar — no cambia la simulación en
+      // absoluto, solo el aspecto del módulo (direccionamiento I0.0/Q0.0
+      // en vez de I1/Q1, caja más grande...). Por defecto, LOGO!.
+      const m = line.match(/^PLC\s+(LOGO|S71200|S7-1200)\s*$/i);
+      if (!m) throw new Error('PLC: PLC LOGO  o  PLC S71200');
+      plcType = /^S7/i.test(m[1]) ? 's71200' : 'logo';
+      continue;
+    }
+    if (line.startsWith('EXPANSION')) {
+      const name = line.slice(9).trim();
+      if (!/^\w+$/.test(name)) throw new Error('EXPANSION: EXPANSION nombre (p.ej. EXPANSION EM1)');
+      expansions.push(name);
+      continue;
+    }
     throw new Error('Línea no reconocida: ' + line);
   }
 
-  if (!coils.length && !latches.length && !timers.length && !counters.length && !setResets.length && !impulses.length) {
-    throw new Error('Define al menos un COIL, LATCH, TIMER, COUNTER, SET, RESET o IMPULSE');
+  if (!coils.length && !latches.length && !timers.length && !counters.length && !setResets.length && !impulses.length && !powerLinks.length) {
+    throw new Error('Define al menos un COIL, LATCH, TIMER, COUNTER, SET, RESET, IMPULSE, LINK/MOTOR o POWERCHAIN');
   }
+
+  // resolver el tipo de cada LINK (protección, por convención de nombre
+  // QM/FT/FU/QS/DIF, o contactor: una salida del circuito de control)
+  const protectivePrefix = /^(QM|FT|FU|QS|DIF|RCD)/i;
+  powerLinks.forEach(link => {
+    if (inputs.includes(link.name)) {
+      if (!protectivePrefix.test(link.name)) {
+        throw new Error(`LINK/POWERCHAIN: "${link.name}" es una entrada pero no tiene un prefijo de protección reconocido (QM/FT/FU/QS/DIF)`);
+      }
+      link.kind = 'protective';
+      protectiveNames.add(link.name);
+    } else if (declared.has(link.name) || srNames.has(link.name)) {
+      link.kind = 'contactor';
+    } else {
+      throw new Error(`LINK/POWERCHAIN: "${link.name}" no es ni una entrada de protección (QM/FT/FU/QS/DIF) ni una salida del circuito de control (COIL/LATCH/SET/TIMER/COUNTER/IMPULSE)`);
+    }
+  });
+  motors.forEach(motor => {
+    if (inputs.includes(motor.name) || declared.has(motor.name) || srNames.has(motor.name)
+      || selBaseNames.has(motor.name) || selDerived.has(motor.name)) {
+      throw new Error(`"${motor.name}" (MOTOR) ya está en uso por otra cosa`);
+    }
+  });
+  const linkNames = new Set(powerLinks.map(l => l.name));
+  interlocks.forEach(group => {
+    group.forEach(n => {
+      if (!linkNames.has(n)) throw new Error(`INTERLOCK: "${n}" no es un LINK/dispositivo de potencia declarado`);
+      const link = powerLinks.find(l => l.name === n);
+      if (link.kind !== 'contactor') throw new Error(`INTERLOCK: "${n}" no es un contactor (solo se interbloquean contactores, no protecciones)`);
+    });
+  });
 
   const known = new Set([...inputs, ...declared, ...srNames, ...selDerived]);
   const used = new Set();
@@ -308,7 +437,7 @@ export function parseProgram(text) {
     throw new Error('No declarado: ' + withHints.join('; '));
   }
 
-  const program = { inputs, coils, latches, timers, counters, setResets, selectors, impulses };
+  const program = { inputs, coils, latches, timers, counters, setResets, selectors, impulses, powerLinks, motors, interlocks, protectiveNames, plcType, expansions };
   program.edgeNodes = collectEdgeNodes(program);
   return program;
 }
@@ -373,6 +502,99 @@ export function commitEdgeMemory(prog, st) {
   });
 }
 
+const CW_SEQUENCES = new Set(['L1L2L3', 'L2L3L1', 'L3L1L2']);   // rotaciones cíclicas = mismo sentido
+const CCW_SEQUENCES = new Set(['L1L3L2', 'L3L2L1', 'L2L1L3']);  // con dos fases cruzadas = sentido inverso
+// nodos "fuente": siempre presentes, no los produce ningún LINK. L1/L2/L3
+// son las fases; N es el neutro (retorno de una carga monofásica); PE es
+// tierra de protección — un nodo alimentado a la vez por una fase y por PE
+// es una fuga a tierra real, detectada con el mismo mecanismo que un
+// cortocircuito entre fases (dos "fuentes" distintas en el mismo nodo).
+const RAW_SOURCES = new Set(['L1', 'L2', 'L3', 'N', 'PE']);
+
+/**
+ * Calcula el estado de toda la red de potencia para este ciclo:
+ *  - bloqueo mecánico por INTERLOCK (el primero de la lista que esté
+ *    cerrado gana; el resto queda bloqueado aunque su bobina esté activa)
+ *  - qué fase (L1/L2/L3) llega a cada nodo, siguiendo hacia atrás solo los
+ *    LINK que conducen ahora mismo
+ *  - cortocircuito: un nodo alimentado por más de una fase distinta a la
+ *    vez (p. ej. un inversor de giro sin interbloqueo cerrando ambos
+ *    contactores a la vez)
+ *  - qué protecciones habría que disparar por cada cortocircuito
+ *    encontrado (la protección más cercana, aguas arriba, en cada camino)
+ *  - si cada motor queda energizado y, si es así, con qué sentido de giro
+ *    (según qué fase llega a qué terminal)
+ * No modifica `st` — quien la llame decide qué hacer con el resultado
+ * (aplicar los disparos automáticos, escribir st[motor.name], etc.).
+ */
+export function computePowerNetwork(prog, st) {
+  const mechBlocked = new Set();
+  (prog.interlocks || []).forEach(group => {
+    let winner = false;
+    group.forEach(name => {
+      if (!!st[name]) {
+        if (winner) mechBlocked.add(name); else winner = true;
+      }
+    });
+  });
+
+  function conducts(link) {
+    if (mechBlocked.has(link.name)) return false;
+    const raw = !!st[link.name];
+    return link.kind === 'protective' ? !raw : raw;
+  }
+
+  const producers = {}; // nodo -> [{link, src}], solo de LINKs que conducen
+  (prog.powerLinks || []).forEach(link => {
+    if (!conducts(link)) return;
+    link.mapping.forEach(([src, dst]) => {
+      (producers[dst] = producers[dst] || []).push({ link, src });
+    });
+  });
+
+  const phaseCache = new Map();
+  function phasesAt(node, visiting) {
+    if (RAW_SOURCES.has(node)) return new Set([node]);
+    if (phaseCache.has(node)) return phaseCache.get(node);
+    if (visiting.has(node)) return new Set(); // corta un ciclo accidental en el cableado
+    visiting.add(node);
+    const result = new Set();
+    (producers[node] || []).forEach(({ src }) => phasesAt(src, visiting).forEach(p => result.add(p)));
+    visiting.delete(node);
+    phaseCache.set(node, result);
+    return result;
+  }
+
+  const shortedNodes = Object.keys(producers).filter(node => phasesAt(node, new Set()).size > 1);
+  const groundFaultNodes = shortedNodes.filter(node => phasesAt(node, new Set()).has('PE'));
+
+  const toTrip = new Set();
+  function findProtections(node, visiting) {
+    if (visiting.has(node)) return;
+    visiting.add(node);
+    (producers[node] || []).forEach(({ link, src }) => {
+      if (link.kind === 'protective') toTrip.add(link.name);
+      else findProtections(src, visiting);
+    });
+  }
+  shortedNodes.forEach(node => findProtections(node, new Set()));
+
+  const motorResults = {}; // nombre de motor -> { energized, rotation: 'cw'|'ccw'|null, shorted }
+  (prog.motors || []).forEach(motor => {
+    const perTerminal = motor.terminals.map(t => phasesAt(t, new Set()));
+    const anyShort = perTerminal.some(s => s.size > 1);
+    const allFed = perTerminal.every(s => s.size === 1);
+    let rotation = null;
+    if (allFed && !anyShort && motor.terminals.length >= 3) {
+      const seq = perTerminal.slice(0, 3).map(s => [...s][0]).join('');
+      rotation = CW_SEQUENCES.has(seq) ? 'cw' : CCW_SEQUENCES.has(seq) ? 'ccw' : null;
+    }
+    motorResults[motor.name] = { energized: allFed && !anyShort, rotation, shorted: anyShort };
+  });
+
+  return { mechBlocked, producers, shortedNodes, groundFaultNodes, toTrip, motorResults };
+}
+
 // Pulsadores momentáneos: por convención, todo INPUT que empieza por "SB"
 // solo se mantiene activo mientras se pulsa.
 export function isMom(name) {
@@ -402,6 +624,7 @@ export function blankState(prog) {
   prog.counters.forEach(c => st[c.name] = false);
   new Set(prog.setResets.map(op => op.name)).forEach(name => st[name] = false);
   prog.impulses.forEach(imp => st[imp.name] = false);
+  prog.motors.forEach(motor => { st[motor.name] = false; st['__rot_' + motor.name] = null; });
   (prog.edgeNodes || []).forEach(n => st['__edge' + n.edgeId] = false);
   (prog.selectors || []).forEach(sel => {
     st['__selpos_' + sel.name] = 0;

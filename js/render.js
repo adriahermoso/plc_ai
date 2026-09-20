@@ -4,7 +4,7 @@
 // globales del script; ahora se le pasan explícitamente) para poder vivir
 // en su propio módulo sin depender de app.js.
 
-import { evalAst, isMom, isEStop, isThermal, isBreaker, isFuse, isDisconnect, isRCD } from './core.js';
+import { evalAst, isMom, isEStop, isThermal, isBreaker, isFuse, isDisconnect, isRCD, computePowerNetwork } from './core.js';
 
 const CW = 54, CH = 38, GAPX = 12, GAPY = 8;
 
@@ -180,6 +180,10 @@ function drawField(prog, st) {
   const Lx = 36, Nx = 640;
   const logoX = 310, logoY = 56, logoW = 200, logoH = 268;
   const inputs = prog.inputs.slice(0, 8);
+  const isS7 = prog.plcType === 's71200';
+  const brand = isS7 ? 'SIEMENS S7-1200' : 'SIEMENS LOGO!';
+  const inAddr = i => isS7 ? `I0.${i}` : `I${i + 1}`;
+  const outAddr = i => isS7 ? `Q0.${i}` : `Q${i + 1}`;
 
   parts.push(`<line x1="${Lx}" y1="48" x2="${Lx}" y2="480" stroke="var(--phase)" stroke-width="3"/>`);
   parts.push(`<text x="${Lx}" y="44" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--phase)" font-weight="600">L+</text>`);
@@ -187,7 +191,7 @@ function drawField(prog, st) {
   parts.push(`<text x="${Nx}" y="44" text-anchor="middle" font-family="var(--mono)" font-size="11" fill="var(--neutral)" font-weight="600">M</text>`);
 
   parts.push(`<rect x="${logoX}" y="${logoY}" width="${logoW}" height="${logoH}" rx="7" fill="var(--logo)"/>`);
-  parts.push(`<text x="${logoX + logoW / 2}" y="${logoY + 20}" text-anchor="middle" fill="#eef1f3" font-family="var(--sans)" font-size="12" font-weight="700">SIEMENS LOGO!</text>`);
+  parts.push(`<text x="${logoX + logoW / 2}" y="${logoY + 20}" text-anchor="middle" fill="#eef1f3" font-family="var(--sans)" font-size="${isS7 ? 11 : 12}" font-weight="700">${brand}</text>`);
   parts.push(`<rect x="${logoX + 16}" y="${logoY + 32}" width="${logoW - 32}" height="32" rx="3" fill="#151c22"/>`);
   const active = [
     ...prog.latches.map(l => l.name),
@@ -205,7 +209,7 @@ function drawField(prog, st) {
     const tx = logoX + 12 + (i % 4) * 46;
     const ty = logoY + 92 + Math.floor(i / 4) * 26;
     parts.push(`<rect x="${tx}" y="${ty}" width="40" height="18" rx="2" fill="${on ? 'var(--live-soft)' : '#2a333c'}" stroke="${on ? 'var(--live)' : '#1a2228'}"/>`);
-    parts.push(`<text x="${tx + 20}" y="${ty + 13}" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="${on ? 'var(--live)' : '#a8b4c0'}">I${i + 1}</text>`);
+    parts.push(`<text x="${tx + 20}" y="${ty + 13}" text-anchor="middle" font-family="var(--mono)" font-size="${isS7 ? 7.5 : 9}" fill="${on ? 'var(--live)' : '#a8b4c0'}">${inAddr(i)}</text>`);
   });
 
   const outs = [
@@ -222,7 +226,7 @@ function drawField(prog, st) {
     const tx = logoX + 12 + i * 46;
     const ty = logoY + 168;
     parts.push(`<rect x="${tx}" y="${ty}" width="40" height="18" rx="2" fill="${on ? 'var(--live-soft)' : '#2a333c'}" stroke="${on ? 'var(--live)' : '#1a2228'}"/>`);
-    parts.push(`<text x="${tx + 20}" y="${ty + 13}" text-anchor="middle" font-family="var(--mono)" font-size="9" fill="${on ? 'var(--live)' : '#a8b4c0'}">Q${i + 1}</text>`);
+    parts.push(`<text x="${tx + 20}" y="${ty + 13}" text-anchor="middle" font-family="var(--mono)" font-size="${isS7 ? 7.5 : 9}" fill="${on ? 'var(--live)' : '#a8b4c0'}">${outAddr(i)}</text>`);
   });
   parts.push(`<text x="${logoX + logoW / 2}" y="${logoY + logoH - 14}" text-anchor="middle" fill="#8fdbb0" font-family="var(--mono)" font-size="9">RUN</text>`);
 
@@ -269,7 +273,21 @@ function drawField(prog, st) {
     parts.push(`<line x1="${lx + 9}" y1="${yy - 9}" x2="${lx - 9}" y2="${yy + 9}" stroke="${col}" stroke-width="1.5"/>`);
     parts.push(`<text x="${lx}" y="${yy - 18}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">${name}</text>`);
     parts.push(wire(lx + 14, yy, Nx, yy, on));
-    parts.push(`<text x="${qx}" y="${logoY + logoH + 12}" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="var(--muted)">Q${i + 1}</text>`);
+    parts.push(`<text x="${qx}" y="${logoY + logoH + 12}" text-anchor="middle" font-family="var(--mono)" font-size="7.5" fill="var(--muted)">${outAddr(i)}</text>`);
+  });
+
+  // módulos de expansión (solo informativos: nuestro modelo de E/S no
+  // reserva bornes físicos reales, así que aquí no añaden entradas/salidas
+  // utilizables — son una referencia visual de que "ahí irían")
+  (prog.expansions || []).forEach((name, i) => {
+    const ex = Nx + 44 + i * 96;
+    const exY = logoY;
+    parts.push(`<rect x="${ex}" y="${exY}" width="84" height="120" rx="6" fill="var(--logo)" opacity="0.85"/>`);
+    parts.push(`<text x="${ex + 42}" y="${exY + 18}" text-anchor="middle" fill="#eef1f3" font-family="var(--sans)" font-size="9" font-weight="700">${name}</text>`);
+    parts.push(`<text x="${ex + 42}" y="${exY + 34}" text-anchor="middle" fill="#9aa7b2" font-family="var(--mono)" font-size="7">expansión</text>`);
+    for (let k = 0; k < 6; k++) {
+      parts.push(`<rect x="${ex + 10}" y="${exY + 44 + k * 12}" width="64" height="9" rx="1.5" fill="#2a333c" stroke="#1a2228"/>`);
+    }
   });
 
   const h = logoY + logoH + 40 + Math.max(outs.length, 1) * 48 + 20;
@@ -282,6 +300,118 @@ function drawField(prog, st) {
  * los callbacks que app.js usa para reaccionar a los clics sobre los
  * símbolos de entrada dibujados en el propio diagrama.
  */
+// ─── Circuito de potencia (Grupo 2): busbars L1/L2/L3, con los
+// dispositivos organizados por "generación" topológica (cuántos pasos les
+// separan de la fuente), así que las ramas (p. ej. un inversor de giro
+// KM1/KM2 compartiendo el mismo bus de QM1) se dibujan una al lado de la
+// otra en vez de una encima de otra.
+function computeLinkDepths(prog) {
+  const nodeDepth = { L1: 0, L2: 0, L3: 0 };
+  const linkDepth = {};
+  for (let pass = 0; pass < 50; pass++) {
+    let changed = false;
+    prog.powerLinks.forEach(link => {
+      const srcDepths = link.mapping.map(([s]) => nodeDepth[s]);
+      if (srcDepths.some(d => d === undefined)) return;
+      const d = Math.max(...srcDepths) + 1;
+      if (linkDepth[link.name] === undefined || d < linkDepth[link.name]) { linkDepth[link.name] = d; changed = true; }
+      link.mapping.forEach(([, dst]) => {
+        if (nodeDepth[dst] === undefined || d < nodeDepth[dst]) { nodeDepth[dst] = d; changed = true; }
+      });
+    });
+    if (!changed) break;
+  }
+  return { nodeDepth, linkDepth };
+}
+
+function drawPowerDevice(link, st, net, x, y, parts) {
+  const lineGap = 22;
+  const lines = [0, 1, 2].map(i => x + i * lineGap);
+  const raw = !!st[link.name];
+  const blocked = net.mechBlocked.has(link.name);
+  const on = !blocked && (link.kind === 'protective' ? !raw : raw);
+  const tripped = link.kind === 'protective' && raw;
+  const rowH = 46;
+  const midY = y + rowH / 2;
+  const col = tripped ? 'var(--phase)' : blocked ? 'var(--warn)' : (on ? 'var(--live)' : 'var(--ink)');
+  if (link.kind === 'protective') parts.push(`<g data-in="${link.name}" style="cursor:pointer">`);
+  lines.forEach(lx => {
+    parts.push(`<line x1="${lx}" y1="${midY - 8}" x2="${lx}" y2="${midY - 3}" stroke="${col}" stroke-width="2.4"/>`);
+    if (on) {
+      parts.push(`<line x1="${lx}" y1="${midY - 3}" x2="${lx}" y2="${midY + 3}" stroke="${col}" stroke-width="2.4"/>`);
+    } else {
+      parts.push(`<line x1="${lx}" y1="${midY - 3}" x2="${lx + 6}" y2="${midY + 4}" stroke="${col}" stroke-width="2"/>`);
+    }
+    parts.push(`<line x1="${lx}" y1="${midY + 3}" x2="${lx}" y2="${midY + 8}" stroke="${col}" stroke-width="2.4"/>`);
+  });
+  const labelX = lines[2] + 14;
+  parts.push(`<text x="${labelX}" y="${midY + 3}" font-family="var(--mono)" font-size="10.5" font-weight="600" fill="${col}">${link.name}</text>`);
+  if (tripped) parts.push(`<text x="${labelX}" y="${midY + 15}" font-family="var(--mono)" font-size="8" font-weight="700" fill="var(--phase)">⚠ DISPARADO</text>`);
+  else if (blocked) parts.push(`<text x="${labelX}" y="${midY + 15}" font-family="var(--mono)" font-size="8" font-weight="700" fill="var(--warn)">🔒 interbloqueado</text>`);
+  if (link.kind === 'protective') parts.push(`</g>`);
+  return { on, x, bottomY: y + rowH };
+}
+
+function drawPower(prog, st) {
+  if (!prog.powerLinks.length) return { svg: '', height: 0 };
+  const net = computePowerNetwork(prog, st);
+  const { linkDepth } = computeLinkDepths(prog);
+  const maxDepth = Math.max(0, ...Object.values(linkDepth));
+  const byDepth = {};
+  prog.powerLinks.forEach(link => {
+    const d = linkDepth[link.name] || 1;
+    (byDepth[d] = byDepth[d] || []).push(link);
+  });
+
+  const parts = ['<text x="20" y="16" font-family="var(--mono)" font-size="10" fill="var(--muted)" letter-spacing="0.04em">CIRCUITO DE POTENCIA</text>'];
+  const colWidth = 130, rowH = 60, x0 = 50;
+  const linkX = {};
+  let y = 34, maxW = x0;
+  for (let d = 1; d <= maxDepth; d++) {
+    const row = byDepth[d] || [];
+    if (!row.length) continue;
+    if (d === 1) {
+      ['L1', 'L2', 'L3'].forEach((lbl, k) => parts.push(`<text x="${x0 + k * 22}" y="${y - 8}" text-anchor="middle" font-family="var(--mono)" font-size="9" font-weight="700" fill="var(--phase)">${lbl}</text>`));
+    }
+    // bus horizontal de entrada compartido, si más de un dispositivo arranca en esta fila
+    if (row.length > 1) {
+      const xs = row.map((l, i) => x0 + i * colWidth);
+      [0, 1, 2].forEach(ph => {
+        parts.push(`<line x1="${xs[0] + ph * 22}" y1="${y}" x2="${xs[xs.length - 1] + ph * 22}" y2="${y}" stroke="var(--live)" stroke-width="1.6"/>`);
+      });
+    }
+    row.forEach((link, i) => {
+      const x = x0 + i * colWidth;
+      [0, 1, 2].forEach(ph => parts.push(`<line x1="${x + ph * 22}" y1="${y}" x2="${x + ph * 22}" y2="${y + 15}" stroke="var(--live)" stroke-width="2"/>`));
+      const res = drawPowerDevice(link, st, net, x, y + 15, parts);
+      linkX[link.name] = x;
+      maxW = Math.max(maxW, x + 2 * 22 + 90);
+    });
+    y += rowH;
+  }
+
+  // motores: cada uno debajo del último dispositivo que le alimenta
+  prog.motors.forEach(motor => {
+    const feeders = prog.powerLinks.filter(l => l.mapping.some(([, dst]) => motor.terminals.includes(dst)));
+    const x = feeders.length ? (linkX[feeders[feeders.length - 1].name] ?? x0) : x0;
+    const lines = [0, 1, 2].map(i => x + i * 22);
+    const r = net.motorResults[motor.name] || { energized: false, rotation: null, shorted: false };
+    lines.forEach(lx => parts.push(`<line x1="${lx}" y1="${y}" x2="${lx}" y2="${y + 28}" stroke="${r.energized ? 'var(--live)' : 'var(--ink)'}" stroke-width="2"/>`));
+    const mcx = lines[1], mcy = y + 28 + 22;
+    const mcol = r.shorted ? 'var(--phase)' : (r.energized ? 'var(--live)' : 'var(--ink)');
+    parts.push(`<circle data-coil="${motor.name}" cx="${mcx}" cy="${mcy}" r="20" fill="${r.energized ? 'var(--live-soft)' : 'none'}" stroke="${mcol}" stroke-width="2.4"/>`);
+    parts.push(`<text x="${mcx}" y="${mcy - 2}" text-anchor="middle" font-family="var(--mono)" font-size="13" font-weight="700" fill="${mcol}">M</text>`);
+    parts.push(`<text x="${mcx}" y="${mcy + 10}" text-anchor="middle" font-family="var(--mono)" font-size="8" fill="${mcol}">3~</text>`);
+    parts.push(`<text x="${mcx}" y="${mcy + 36}" text-anchor="middle" font-family="var(--mono)" font-size="10" fill="var(--muted)">${motor.name}</text>`);
+    if (r.shorted) parts.push(`<text x="${mcx}" y="${mcy + 48}" text-anchor="middle" font-family="var(--mono)" font-size="8" font-weight="700" fill="var(--phase)">⚡ CORTOCIRCUITO</text>`);
+    else if (r.energized) parts.push(`<text x="${mcx + 30}" y="${mcy + 6}" text-anchor="middle" font-size="17" fill="${mcol}">${r.rotation === 'ccw' ? '↺' : '↻'}</text>`);
+    maxW = Math.max(maxW, mcx + 90);
+    y = mcy + 60;
+  });
+
+  return { svg: parts.join(''), height: y };
+}
+
 export function drawAll(svgEl, program, states, counts, { onToggleInput, onPressStart, onPressEnd }) {
   if (!program) { svgEl.innerHTML = ''; return; }
   const parts = [];
@@ -345,7 +475,9 @@ export function drawAll(svgEl, program, states, counts, { onToggleInput, onPress
   });
 
   const field = drawField(program, states);
-  const totalH = Math.max(y + 40, field.h + 20, 520);
+  const power = drawPower(program, states);
+  const offsetY = power.height;
+  const totalH = Math.max(y + 40, field.h + 20, 520) + offsetY;
   const totalW = Math.max(maxW + 20, 1180);
   const bg = `
     <defs>
@@ -354,15 +486,15 @@ export function drawAll(svgEl, program, states, counts, { onToggleInput, onPress
       </pattern>
     </defs>
     <rect width="${totalW}" height="${totalH}" fill="url(#g)"/>
-    <text x="36" y="26" font-family="var(--mono)" font-size="10" fill="var(--muted)" letter-spacing="0.04em">CABLEADO · LOGO!</text>
-    <text x="${ladderX + rail}" y="26" font-family="var(--mono)" font-size="10" fill="var(--muted)" letter-spacing="0.04em">KOP / ESCALERA</text>
-    <text x="${ladderX + rail}" y="42" text-anchor="middle" font-family="var(--mono)" font-size="11" font-weight="600" fill="var(--ink)">L+</text>
+    <text x="36" y="${26 + offsetY}" font-family="var(--mono)" font-size="10" fill="var(--muted)" letter-spacing="0.04em">CABLEADO · LOGO!</text>
+    <text x="${ladderX + rail}" y="${26 + offsetY}" font-family="var(--mono)" font-size="10" fill="var(--muted)" letter-spacing="0.04em">KOP / ESCALERA</text>
+    <text x="${ladderX + rail}" y="${42 + offsetY}" text-anchor="middle" font-family="var(--mono)" font-size="11" font-weight="600" fill="var(--ink)">L+</text>
   `;
 
   svgEl.setAttribute('viewBox', `0 0 ${totalW} ${totalH}`);
   svgEl.setAttribute('width', totalW);
   svgEl.setAttribute('height', totalH);
-  svgEl.innerHTML = bg + field.svg + parts.join('');
+  svgEl.innerHTML = bg + power.svg + `<g transform="translate(0, ${offsetY})">` + field.svg + parts.join('') + `</g>`;
 
   svgEl.querySelectorAll('[data-in]').forEach(el => {
     const name = el.getAttribute('data-in');

@@ -1,0 +1,435 @@
+{
+  "CONTACT_NO": {
+    "symbol_id": "CONTACT_NO",
+    "category": "contacts",
+    "default_tag": "",
+    "svg_file": "contacts/CONTACT_NO.svg",
+    "grid_width": 3,
+    "grid_height": 2,
+    "description": "Contacto NA (escalera)",
+    "terminals": [
+      {
+        "label": "13",
+        "grid_offset_x": 0,
+        "grid_offset_y": 1,
+        "svg_pixel_x": 20.0,
+        "svg_pixel_y": 19.0
+      },
+      {
+        "label": "14",
+        "grid_offset_x": 3,
+        "grid_offset_y": 1,
+        "svg_pixel_x": 34.0,
+        "svg_pixel_y": 19.0
+      }
+    ]
+  },
+  "CONTACT_NC": {
+    "symbol_id": "CONTACT_NC",
+    "category": "contacts",
+    "default_tag": "",
+    "svg_file": "contacts/CONTACT_NC.svg",
+    "grid_width": 3,
+    "grid_height": 2,
+    "description": "Contacto NC (escalera)",
+    "terminals": [
+      {
+        "label": "11",
+        "grid_offset_x": 0,
+        "grid_offset_y": 1,
+        "svg_pixel_x": 20.0,
+        "svg_pixel_y": 19.0
+      },
+      {
+        "label": "12",
+        "grid_offset_x": 3,
+        "grid_offset_y": 1,
+        "svg_pixel_x": 34.0,
+        "svg_pixel_y": 19.0
+      }
+    ]
+  },
+  "CONTACT_THERMAL": {
+    "symbol_id": "CONTACT_THERMAL",
+    "category": "contacts",
+    "default_tag": "",
+    "svg_file": "contacts/CONTACT_THERMAL.svg",
+    "grid_width": 3,
+    "grid_height": 2,
+    "description": "Contacto térmico (gancho)",
+    "terminals": [
+      {
+        "label": "95",
+        "grid_offset_x": 0,
+        "grid_offset_y": 1,
+        "svg_pixel_x": 20.0,
+        "svg_pixel_y": 19.0
+      },
+      {
+        "label": "96",
+        "grid_offset_x": 3,
+        "grid_offset_y": 1,
+        "svg_pixel_x": 34.0,
+        "svg_pixel_y": 19.0
+      }
+    ]
+  },
+  "CONTACT_EDGE_P": {
+    "symbol_id": "CONTACT_EDGE_P",
+    "category": "contacts",
+    "default_tag": "",
+    "svg_file": "contacts/CONTACT_EDGE_P.svg",
+    "grid_width": 3,
+    "grid_height": 2,
+    "description": "Flanco positivo P()",
+    "terminals": []
+  },
+  "CONTACT_EDGE_N": {
+    "symbol_id": "CONTACT_EDGE_N",
+    "category": "contacts",
+    "default_tag": "",
+    "svg_file": "contacts/CONTACT_EDGE_N.svg",
+    "grid_width": 3,
+    "grid_height": 2,
+    "description": "Flanco negativo N()",
+    "terminals": []
+  },
+  "COIL_GENERIC": {
+    "symbol_id": "COIL_GENERIC",
+    "category": "coils",
+    "default_tag": "-K",
+    "svg_file": "coils/COIL_GENERIC.svg",
+    "grid_width": 2,
+    "grid_height": 6,
+    "description": "Bobina genérica A1/A2",
+    "terminals": [
+      {
+        "label": "A1",
+        "grid_offset_x": 1,
+        "grid_offset_y": 0,
+        "svg_pixel_x": 25.0,
+        "svg_pixel_y": 20.0
+      },
+      {
+        "label": "A2",
+        "grid_offset_x": 1,
+        "grid_offset_y": 6,
+        "svg_pixel_x": 25.0,
+        "svg_pixel_y": 70.0
+      }
+    ]
+  },
+  "COIL_TIMER": {
+    "symbol_id": "COIL_TIMER",
+    "category": "coils",
+    "default_tag": "-KT",
+    "svg_file": "coils/COIL_TIMER.svg",
+    "grid_width": 2,
+    "grid_height": 6,
+    "description": "Bobina temporizador",
+    "terminals": [
+      {
+        "label": "A1",
+        "grid_offset_x": 1,
+        "grid_offset_y": 0,
+        "svg_pixel_x": 25.0,
+        "svg_pixel_y": 20.0
+      },
+      {
+        "label": "A2",
+        "grid_offset_x": 1,
+        "grid_offset_y": 6,
+        "svg_pixel_x": 25.0,
+        "svg_pixel_y": 70.0
+      }
+    ]
+  },
+  "COIL_SET": {
+    "symbol_id": "COIL_SET",
+    "category": "coils",
+    "default_tag": "-S",
+    "svg_file": "coils/COIL_SET.svg",
+    "grid_width": 2,
+    "grid_height": 3,
+    "description": "Asignación SET",
+    "terminals": []
+  },
+  "COIL_RESET": {
+    "symbol_id": "COIL_RESET",
+    "category": "coils",
+    "default_tag": "-R",
+    "svg_file": "coils/COIL_RESET.svg",
+    "grid_width": 2,
+    "grid_height": 3,
+    "description": "Asignación RESET",
+    "terminals": []
+  },
+  "LAMP": {
+    "symbol_id": "LAMP",
+    "category": "coils",
+    "default_tag": "-HL",
+    "svg_file": "coils/LAMP.svg",
+    "grid_width": 2,
+    "grid_height": 2,
+    "description": "Lámpara piloto",
+    "terminals": []
+  },
+  "INPUT_SWITCH_OPEN": {
+    "symbol_id": "INPUT_SWITCH_OPEN",
+    "category": "inputs",
+    "default_tag": "",
+    "svg_file": "inputs/INPUT_SWITCH_OPEN.svg",
+    "grid_width": 3,
+    "grid_height": 2,
+    "description": "Interruptor de campo abierto",
+    "terminals": []
+  },
+  "INPUT_SWITCH_CLOSED": {
+    "symbol_id": "INPUT_SWITCH_CLOSED",
+    "category": "inputs",
+    "default_tag": "",
+    "svg_file": "inputs/INPUT_SWITCH_CLOSED.svg",
+    "grid_width": 3,
+    "grid_height": 2,
+    "description": "Interruptor de campo cerrado",
+    "terminals": []
+  },
+  "ESTOP_HEAD": {
+    "symbol_id": "ESTOP_HEAD",
+    "category": "inputs",
+    "default_tag": "-ES",
+    "svg_file": "inputs/ESTOP_HEAD.svg",
+    "grid_width": 1,
+    "grid_height": 1,
+    "description": "Cabeza seta de emergencia",
+    "terminals": []
+  },
+  "GLYPH_THERMAL": {
+    "symbol_id": "GLYPH_THERMAL",
+    "category": "glyphs",
+    "default_tag": "-FT",
+    "svg_file": "glyphs/GLYPH_THERMAL.svg",
+    "grid_width": 2,
+    "grid_height": 2,
+    "description": "Icono relé térmico",
+    "terminals": []
+  },
+  "GLYPH_BREAKER": {
+    "symbol_id": "GLYPH_BREAKER",
+    "category": "glyphs",
+    "default_tag": "-QM",
+    "svg_file": "glyphs/GLYPH_BREAKER.svg",
+    "grid_width": 2,
+    "grid_height": 2,
+    "description": "Icono magnetotérmico",
+    "terminals": []
+  },
+  "GLYPH_FUSE": {
+    "symbol_id": "GLYPH_FUSE",
+    "category": "glyphs",
+    "default_tag": "-FU",
+    "svg_file": "glyphs/GLYPH_FUSE.svg",
+    "grid_width": 1,
+    "grid_height": 2,
+    "description": "Icono fusible",
+    "terminals": []
+  },
+  "GLYPH_DISCONNECT": {
+    "symbol_id": "GLYPH_DISCONNECT",
+    "category": "glyphs",
+    "default_tag": "-QS",
+    "svg_file": "glyphs/GLYPH_DISCONNECT.svg",
+    "grid_width": 2,
+    "grid_height": 2,
+    "description": "Icono seccionador",
+    "terminals": []
+  },
+  "GLYPH_RCD": {
+    "symbol_id": "GLYPH_RCD",
+    "category": "glyphs",
+    "default_tag": "-DIF",
+    "svg_file": "glyphs/GLYPH_RCD.svg",
+    "grid_width": 2,
+    "grid_height": 2,
+    "description": "Icono diferencial",
+    "terminals": []
+  },
+  "POWER_3POLE_OPEN": {
+    "symbol_id": "POWER_3POLE_OPEN",
+    "category": "power",
+    "default_tag": "",
+    "svg_file": "power/POWER_3POLE_OPEN.svg",
+    "grid_width": 4,
+    "grid_height": 3,
+    "description": "Dispositivo potencia 3 polos abierto",
+    "terminals": [
+      {
+        "label": "1",
+        "grid_offset_x": 0,
+        "grid_offset_y": 0,
+        "svg_pixel_x": 10.0,
+        "svg_pixel_y": 8.0
+      },
+      {
+        "label": "3",
+        "grid_offset_x": 2,
+        "grid_offset_y": 0,
+        "svg_pixel_x": 32.0,
+        "svg_pixel_y": 8.0
+      },
+      {
+        "label": "5",
+        "grid_offset_x": 4,
+        "grid_offset_y": 0,
+        "svg_pixel_x": 54.0,
+        "svg_pixel_y": 8.0
+      },
+      {
+        "label": "2",
+        "grid_offset_x": 0,
+        "grid_offset_y": 3,
+        "svg_pixel_x": 10.0,
+        "svg_pixel_y": 42.0
+      },
+      {
+        "label": "4",
+        "grid_offset_x": 2,
+        "grid_offset_y": 3,
+        "svg_pixel_x": 32.0,
+        "svg_pixel_y": 42.0
+      },
+      {
+        "label": "6",
+        "grid_offset_x": 4,
+        "grid_offset_y": 3,
+        "svg_pixel_x": 54.0,
+        "svg_pixel_y": 42.0
+      }
+    ]
+  },
+  "POWER_3POLE_CLOSED": {
+    "symbol_id": "POWER_3POLE_CLOSED",
+    "category": "power",
+    "default_tag": "",
+    "svg_file": "power/POWER_3POLE_CLOSED.svg",
+    "grid_width": 4,
+    "grid_height": 3,
+    "description": "Dispositivo potencia 3 polos cerrado",
+    "terminals": [
+      {
+        "label": "1",
+        "grid_offset_x": 0,
+        "grid_offset_y": 0,
+        "svg_pixel_x": 10.0,
+        "svg_pixel_y": 8.0
+      },
+      {
+        "label": "3",
+        "grid_offset_x": 2,
+        "grid_offset_y": 0,
+        "svg_pixel_x": 32.0,
+        "svg_pixel_y": 8.0
+      },
+      {
+        "label": "5",
+        "grid_offset_x": 4,
+        "grid_offset_y": 0,
+        "svg_pixel_x": 54.0,
+        "svg_pixel_y": 8.0
+      },
+      {
+        "label": "2",
+        "grid_offset_x": 0,
+        "grid_offset_y": 3,
+        "svg_pixel_x": 10.0,
+        "svg_pixel_y": 42.0
+      },
+      {
+        "label": "4",
+        "grid_offset_x": 2,
+        "grid_offset_y": 3,
+        "svg_pixel_x": 32.0,
+        "svg_pixel_y": 42.0
+      },
+      {
+        "label": "6",
+        "grid_offset_x": 4,
+        "grid_offset_y": 3,
+        "svg_pixel_x": 54.0,
+        "svg_pixel_y": 42.0
+      }
+    ]
+  },
+  "MOTOR_3PH": {
+    "symbol_id": "MOTOR_3PH",
+    "category": "motors",
+    "default_tag": "-M",
+    "svg_file": "motors/MOTOR_3PH.svg",
+    "grid_width": 3,
+    "grid_height": 3,
+    "description": "Motor trifásico",
+    "terminals": [
+      {
+        "label": "U1",
+        "grid_offset_x": 0,
+        "grid_offset_y": 0,
+        "svg_pixel_x": 10.0,
+        "svg_pixel_y": 5.0
+      },
+      {
+        "label": "V1",
+        "grid_offset_x": 1,
+        "grid_offset_y": 0,
+        "svg_pixel_x": 25.0,
+        "svg_pixel_y": 5.0
+      },
+      {
+        "label": "W1",
+        "grid_offset_x": 2,
+        "grid_offset_y": 0,
+        "svg_pixel_x": 40.0,
+        "svg_pixel_y": 5.0
+      }
+    ]
+  },
+  "LOAD": {
+    "symbol_id": "LOAD",
+    "category": "motors",
+    "default_tag": "-EL",
+    "svg_file": "motors/LOAD.svg",
+    "grid_width": 3,
+    "grid_height": 3,
+    "description": "Carga genérica",
+    "terminals": []
+  },
+  "PLC_LOGO": {
+    "symbol_id": "PLC_LOGO",
+    "category": "logic",
+    "default_tag": "",
+    "svg_file": "logic/PLC_LOGO.svg",
+    "grid_width": 8,
+    "grid_height": 10,
+    "description": "Módulo Siemens LOGO!",
+    "terminals": []
+  },
+  "PLC_S71200": {
+    "symbol_id": "PLC_S71200",
+    "category": "logic",
+    "default_tag": "",
+    "svg_file": "logic/PLC_S71200.svg",
+    "grid_width": 8,
+    "grid_height": 10,
+    "description": "Módulo Siemens S7-1200",
+    "terminals": []
+  },
+  "EXPANSION": {
+    "symbol_id": "EXPANSION",
+    "category": "logic",
+    "default_tag": "",
+    "svg_file": "logic/EXPANSION.svg",
+    "grid_width": 4,
+    "grid_height": 6,
+    "description": "Módulo de expansión",
+    "terminals": []
+  }
+}

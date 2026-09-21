@@ -3,5 +3,5 @@
   <line x1="34" y1="19" x2="54" y2="19" stroke="currentColor" stroke-width="1.5"/>
   <line x1="20" y1="15" x2="20" y2="23" stroke="currentColor" stroke-width="2"/>
   <line x1="34" y1="15" x2="34" y2="23" stroke="currentColor" stroke-width="2"/>
-  <path d="M 20 23 Q 27 4 34 15" fill="none" stroke="currentColor" stroke-width="1.7"/>
+  <line x1="20" y1="25" x2="34" y2="13" stroke="currentColor" stroke-width="1.7"/>
 </svg>

@@ -298,8 +298,9 @@ function drawField(prog, st) {
     parts.push(`<g data-in="${name}">`);
     parts.push(wire(Lx, yy, cx - 20, yy, on));
     const swId = on ? 'INPUT_SWITCH_CLOSED' : 'INPUT_SWITCH_OPEN';
-    // INPUT_SWITCH viewBox 50x40; el centro del interruptor queda en (cx-8, yy)
-    parts.push(placeSymbol(swId, cx - 28, yy - 20, col));
+    // INPUT_SWITCH: vertical izq en local x=12, dcha en x=36 → anclar para que
+    // coincidan con cx-20 y cx+4 (mismo layout que el dibujo procedural original)
+    parts.push(placeSymbol(swId, cx - 32, yy - 20, col));
     if (es) {
       parts.push(placeSymbol('ESTOP_HEAD', cx - 8, yy - 28, on ? 'var(--phase)' : 'var(--phase)', { center: true }));
       if (on) parts.push(`<circle cx="${cx - 8}" cy="${yy - 28}" r="7" fill="var(--phase)" opacity="0.5"/>`);

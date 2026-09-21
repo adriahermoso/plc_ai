@@ -728,10 +728,10 @@ export const COMPONENT_SVG = {
 };
 
 /**
- * Inserta un símbolo de la biblioteca en la posición (x, y).
- * color se aplica vía currentColor en el SVG.
- * opts: { scale, fill, dataAttrs: {key:val}, label }
- * Devuelve un fragmento SVG string listo para concatenar.
+ * Inserta un símbolo de la biblioteca en (x, y).
+ * NO anida <svg> (evita bugs de currentColor / escalado en navegadores).
+ * Sustituye currentColor por el color pasado y aplica transform.
+ * opts: { scale, center, dataAttrs }
  */
 export function placeSymbol(symbolId, x, y, color = 'var(--ink)', opts = {}) {
   const def = COMPONENT_SVG[symbolId];
@@ -740,22 +740,23 @@ export function placeSymbol(symbolId, x, y, color = 'var(--ink)', opts = {}) {
     return `<!-- missing ${symbolId} -->`;
   }
   const scale = opts.scale ?? 1;
-  const w = def.width * scale;
-  const h = def.height * scale;
-  // centrado opcional: por defecto ancla esquina superior-izquierda
-  const ox = opts.center ? x - w / 2 : x;
-  const oy = opts.center ? y - h / 2 : y;
-  const fillAttr = opts.fill ? ` fill="${opts.fill}"` : '';
+  const parts = def.viewBox.split(/[\s,]+/).map(Number);
+  const vw = parts[2] || def.width;
+  const vh = parts[3] || def.height;
+  const ox = opts.center ? x - (vw * scale) / 2 : x;
+  const oy = opts.center ? y - (vh * scale) / 2 : y;
+  // sustituir currentColor para que el color sea fiable sin CSS inheritance
+  const inner = def.inner.replace(/currentColor/g, color);
   let data = '';
   if (opts.dataAttrs) {
     for (const [k, v] of Object.entries(opts.dataAttrs)) {
       data += ` data-${k}="${v}"`;
     }
   }
-  return `<g transform="translate(${ox}, ${oy})" color="${color}"${fillAttr}${data}>` +
-    `<svg width="${w}" height="${h}" viewBox="${def.viewBox}" overflow="visible">` +
-    def.inner +
-    `</svg></g>`;
+  const tr = scale !== 1
+    ? `translate(${ox},${oy}) scale(${scale})`
+    : `translate(${ox},${oy})`;
+  return `<g transform="${tr}"${data}>${inner}</g>`;
 }
 
 /** Resuelve el symbol_id de glifo de protección según el nombre de la señal. */
